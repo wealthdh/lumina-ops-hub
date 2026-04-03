@@ -37,32 +37,42 @@ async function getMT5AccountWithFallback(): Promise<MT5Account> {
   }
 }
 
+async function querySupabaseTrades(): Promise<MT5Trade[]> {
+  const { data } = await supabase
+    .from('mt5_trades')
+    .select('*')
+    .order('open_time', { ascending: false })
+    .limit(20)
+
+  if (data && data.length > 0) {
+    return data.map(r => ({
+      ticket:       r.ticket,
+      symbol:       r.symbol,
+      type:         r.type as 'buy' | 'sell',
+      volume:       r.volume,
+      openPrice:    r.open_price,
+      currentPrice: r.current_price,
+      profit:       r.profit,
+      openTime:     r.open_time,
+      sl:           Number(r.sl ?? 0),
+      tp:           Number(r.tp ?? 0),
+    }))
+  }
+  return []
+}
+
 async function getOpenTradesWithFallback(): Promise<MT5Trade[]> {
   try {
-    return await getOpenTrades()
+    const trades = await getOpenTrades()
+    // Bridge returned OK but empty — also try direct Supabase cache
+    if (trades.length === 0) {
+      const cached = await querySupabaseTrades()
+      if (cached.length > 0) return cached
+    }
+    return trades
   } catch {
     // Bridge not running — try Supabase cached trades
-    const { data } = await supabase
-      .from('mt5_trades')
-      .select('*')
-      .order('open_time', { ascending: false })
-      .limit(20)
-
-    if (data && data.length > 0) {
-      return data.map(r => ({
-        ticket:       r.ticket,
-        symbol:       r.symbol,
-        type:         r.type as 'buy' | 'sell',
-        volume:       r.volume,
-        openPrice:    r.open_price,
-        currentPrice: r.current_price,
-        profit:       r.profit,
-        openTime:     r.open_time,
-        sl:           Number(r.sl ?? 0),
-        tp:           Number(r.tp ?? 0),
-      }))
-    }
-    return []
+    return querySupabaseTrades()
   }
 }
 
