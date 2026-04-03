@@ -117,6 +117,36 @@ export function useUpdateJobStatus() {
   })
 }
 
+// ─── Clone job ────────────────────────────────────────────────────────────────
+
+export function useCloneJob() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (job: Job) => {
+      const { data, error } = await supabase
+        .from('ops_jobs')
+        .insert({
+          user_id: job.id ? undefined : '0ce62691-721c-4eba-bf3e-052731d9839b',
+          name: `${job.name} (Clone)`,
+          status: 'paused',
+          daily_profit: 0,
+          monthly_profit: job.monthlyProfit,
+          projected_monthly: job.projectedMonthly,
+          roi: 0,
+          risk_score: job.riskScore,
+          synergy_score: job.synergyScore,
+          description: job.description,
+          category: job.category,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
+  })
+}
+
 // ─── Realtime subscription ────────────────────────────────────────────────────
 
 export function useJobsRealtime() {

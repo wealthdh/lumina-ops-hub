@@ -125,6 +125,28 @@ const PRODUCTS: Product[] = [
     gumroadUrl: 'https://gumroad.com/market-analysis',
     isSubscription: true,
   },
+  {
+    id: 'prod-9',
+    title: 'Advanced Trading Bot Template',
+    category: 'Templates',
+    price: 149,
+    sales: 0,
+    revenue: 0,
+    rating: 0,
+    status: 'draft',
+    gumroadUrl: 'https://gumroad.com/trading-bot',
+  },
+  {
+    id: 'prod-10',
+    title: 'Crypto Analysis Toolkit',
+    category: 'AI Prompt Packs',
+    price: 39,
+    sales: 0,
+    revenue: 0,
+    rating: 0,
+    status: 'draft',
+    gumroadUrl: 'https://gumroad.com/crypto-toolkit',
+  },
 ]
 
 const DAILY_SALES: DailySalesData[] = [
@@ -276,6 +298,9 @@ export default function DigitalAssetStore() {
         <div className="section-header">
           <Package size={14} />
           Digital Products
+        </div>
+        <div className="p-3 mb-4 bg-lumina-gold/5 border border-lumina-gold/20 rounded-lg text-xs text-lumina-dim">
+          Products with $0 revenue showing draft status. <span className="text-lumina-gold">Connect Gumroad API for live sales data</span>.
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

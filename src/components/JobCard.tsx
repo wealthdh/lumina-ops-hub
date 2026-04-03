@@ -7,7 +7,7 @@ import {
 import clsx from 'clsx'
 import type { Job, AutoTask } from '../lib/types'
 import IncomeEntryModal from './IncomeEntryModal'
-import { useUpdateJobStatus } from '../hooks/useJobs'
+import { useUpdateJobStatus, useCloneJob } from '../hooks/useJobs'
 import { useJobIncomeEntries } from '../hooks/useIncomeEntries'
 
 const STATUS_CONFIG = {
@@ -135,6 +135,7 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
   const [expanded,        setExpanded]        = useState(false)
   const [showIncomeEntry, setShowIncomeEntry] = useState(false)
   const updateStatus = useUpdateJobStatus()
+  const cloneJob = useCloneJob()
   const status = STATUS_CONFIG[job.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending
 
   const riskColor =
@@ -262,12 +263,16 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
 
         <button
           className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5"
-          onClick={() => { if (job.cloneUrl) window.open(job.cloneUrl, '_blank') }}
-          disabled={!job.cloneUrl}
-          title={job.cloneUrl ? 'Clone this job' : 'No clone URL configured'}
+          onClick={() => {
+            if (window.confirm(`Clone "${job.name}"? A paused copy will be created.`)) {
+              cloneJob.mutate(job)
+            }
+          }}
+          disabled={cloneJob.isPending}
+          title="Clone this job"
         >
           <Copy size={12} />
-          Clone
+          {cloneJob.isPending ? 'Cloning...' : 'Clone'}
         </button>
 
         <button

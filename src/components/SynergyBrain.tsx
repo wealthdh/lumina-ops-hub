@@ -5,6 +5,8 @@
 import { useState } from 'react'
 import { GitBranch, AlertTriangle, TrendingUp, X, CheckCircle, Loader } from 'lucide-react'
 import { useSynergies, useToggleSynergy, useJobs } from '../hooks/useSupabaseData'
+import { useUpdateJobStatus } from '../hooks/useJobs'
+import { supabase } from '../lib/supabase'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import clsx from 'clsx'
 
@@ -21,6 +23,8 @@ export default function SynergyBrain() {
   const { data: synergies = [], isLoading: synLoading } = useSynergies()
   const { data: jobs = [],      isLoading: jobsLoading } = useJobs()
   const toggleSynergy = useToggleSynergy()
+  const updateStatus = useUpdateJobStatus()
+  const [ignoredRecommendations, setIgnoredRecommendations] = useState<string[]>([])
 
   const loading = synLoading || jobsLoading
 
@@ -151,13 +155,13 @@ export default function SynergyBrain() {
       </div>
 
       {/* Auto-Kill recommendations */}
-      {KILL_RECOMMENDATIONS.length > 0 && (
+      {KILL_RECOMMENDATIONS.filter((r) => !ignoredRecommendations.includes(r.jobId)).length > 0 && (
         <div className="card-glow border-lumina-danger/30">
           <div className="section-header text-lumina-danger">
             <AlertTriangle size={14} />
             Auto-Kill Recommendations
           </div>
-          {KILL_RECOMMENDATIONS.map((rec) => (
+          {KILL_RECOMMENDATIONS.filter((r) => !ignoredRecommendations.includes(r.jobId)).map((rec) => (
             <div key={rec.jobId} className="p-4 bg-lumina-danger/5 border border-lumina-danger/20 rounded-xl">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div>
@@ -165,10 +169,22 @@ export default function SynergyBrain() {
                   <p className="text-lumina-dim text-xs mt-1">{rec.reason}</p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
-                  <button className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1">
+                  <button
+                    className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1"
+                    onClick={() => setIgnoredRecommendations([...ignoredRecommendations, rec.jobId])}
+                  >
                     <CheckCircle size={11} /> Ignore
                   </button>
-                  <button className="text-xs py-1.5 px-3 rounded-lg bg-lumina-danger/20 text-lumina-danger border border-lumina-danger/30 hover:bg-lumina-danger/30 transition-colors flex items-center gap-1">
+                  <button
+                    className="text-xs py-1.5 px-3 rounded-lg bg-lumina-danger/20 text-lumina-danger border border-lumina-danger/30 hover:bg-lumina-danger/30 transition-colors flex items-center gap-1 disabled:opacity-50"
+                    onClick={() => {
+                      if (window.confirm(`Kill "${rec.jobName}"?`)) {
+                        void updateStatus.mutate({ id: rec.jobId, status: 'killed' })
+                        alert(`Job killed and marked for redirect to ${rec.redirectTo}`)
+                      }
+                    }}
+                    disabled={updateStatus.isPending}
+                  >
                     <X size={11} /> Kill & Redirect
                   </button>
                 </div>
@@ -199,7 +215,25 @@ export default function SynergyBrain() {
                   <span className="text-xs font-semibold text-lumina-text">{jobB.name.split(' ')[0]}</span>
                   <span className="badge-pulse badge ml-auto">synergy</span>
                   <span className="text-lumina-success font-mono text-xs">+${value.toLocaleString()}/mo</span>
-                  <button className="text-xs bg-lumina-pulse/20 text-lumina-pulse px-2 py-0.5 rounded-full hover:bg-lumina-pulse/30 transition-colors">
+                  <button
+                    className="text-xs bg-lumina-pulse/20 text-lumina-pulse px-2 py-0.5 rounded-full hover:bg-lumina-pulse/30 transition-colors disabled:opacity-50"
+                    onClick={async () => {
+                      try {
+                        const { error } = await supabase.from('synergy_links').insert({
+                          job_a: jobA.id,
+                          job_b: jobB.id,
+                          synergy_type: 'cross-promotion',
+                          value,
+                          description: `Synergy between ${jobA.name} and ${jobB.name}`,
+                          active: true,
+                        })
+                        if (error) throw error
+                        alert('Synergy activated!')
+                      } catch (err) {
+                        console.error('Failed to activate synergy:', err)
+                      }
+                    }}
+                  >
                     Activate
                   </button>
                 </div>

@@ -9,10 +9,12 @@
  * - Arbitrage detection: detectArbitrage() compares live poly vs MT5
  */
 import { useState, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Zap, RefreshCw, TrendingUp, AlertCircle, CheckCircle, Inbox } from 'lucide-react'
 import { detectArbitrage } from '../lib/polymarket'
 import { usePolyMarkets, useArbitrageSignals } from '../hooks/useSupabaseData'
 import { useMT5Trades } from '../hooks/useMT5'
+import { supabase } from '../lib/supabase'
 import clsx from 'clsx'
 
 /**
@@ -37,6 +39,8 @@ function deriveMT5Implied(trades: Array<{ symbol: string; type: string; profit: 
 export default function EdgeHarmonizer() {
   const [scanning, setScanning] = useState(false)
   const [autoMode, setAutoMode] = useState(false)
+  const [scanComplete, setScanComplete] = useState<{ count: number; time: string } | null>(null)
+  const qc = useQueryClient()
 
   // ── LIVE data from Supabase ─────────────────────────────────────────────────
   const { data: markets = [] }       = usePolyMarkets()
@@ -55,9 +59,61 @@ export default function EdgeHarmonizer() {
     return { label: `${m.question.slice(0, 40)}… YES @ ${Math.round(yesPrice * 100)}¢`, id: m.id }
   })
 
-  function scan() {
+  async function scan() {
     setScanning(true)
-    setTimeout(() => setScanning(false), 1800)
+    setScanComplete(null)
+    try {
+      // Query poly_markets and mt5_trades from Supabase
+      const [polyRes, mt5Res] = await Promise.all([
+        supabase.from('poly_markets').select('*').eq('active', true),
+        supabase.from('mt5_trades').select('*'),
+      ])
+
+      const polyData = polyRes.data ?? []
+      const mt5Data = mt5Res.data ?? []
+
+      // Derive implied probabilities from MT5 data
+      const derived = deriveMT5Implied(
+        mt5Data.map((t: Record<string, unknown>) => ({
+          symbol: t.symbol as string,
+          type: (t.type as string).toLowerCase(),
+          profit: Number(t.profit ?? 0),
+        }))
+      )
+
+      // Run arbitrage detection
+      const detected = detectArbitrage(
+        polyData.map((p: Record<string, unknown>) => ({
+          id: p.id as string,
+          question: p.question as string,
+          slug: p.slug as string,
+          endDate: p.end_date as string,
+          volume: Number(p.volume ?? 0),
+          liquidity: Number(p.liquidity ?? 0),
+          outcomes: ((p.outcomes as Record<string, unknown>[]) ?? []).map((o) => ({
+            name: o.name as string,
+            price: Number(o.price ?? 0),
+            clobTokenId: o.clobTokenId as string,
+          })),
+          category: p.category as string,
+          active: Boolean(p.active),
+        })),
+        derived,
+        0.03
+      )
+
+      // Invalidate cache
+      void qc.invalidateQueries({ queryKey: ['arbitrage'] })
+
+      setScanComplete({
+        count: detected.length,
+        time: new Date().toLocaleTimeString(),
+      })
+    } catch (err) {
+      console.error('[EdgeHarmonizer] Scan error:', err)
+    } finally {
+      setScanning(false)
+    }
   }
 
   return (
@@ -95,6 +151,14 @@ export default function EdgeHarmonizer() {
           <div className="pulse-dot" />
           <span className="text-lumina-pulse font-semibold">Auto-Execute ON</span>
           <span className="text-lumina-dim">— signals ≥ $500 capital & ≥3% edge execute automatically</span>
+        </div>
+      )}
+
+      {scanComplete && (
+        <div className="p-3 bg-lumina-success/10 border border-lumina-success/30 rounded-lg flex items-center gap-2 text-sm">
+          <CheckCircle size={14} className="text-lumina-success" />
+          <span className="text-lumina-success font-semibold">Scan complete</span>
+          <span className="text-lumina-dim">— {scanComplete.count} opportunit{scanComplete.count === 1 ? 'y' : 'ies'} found at {scanComplete.time}</span>
         </div>
       )}
 

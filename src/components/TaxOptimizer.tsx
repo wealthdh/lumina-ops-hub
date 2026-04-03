@@ -4,9 +4,11 @@
  * Data: live from tax_pot + tax_entries Supabase tables
  */
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Shield, TrendingUp, AlertTriangle, RefreshCw, Download, Loader } from 'lucide-react'
 import { useTaxPot, useTaxEntries } from '../hooks/useSupabaseData'
 import { usePortfolioEarnings } from '../hooks/useIncomeEntries'
+import { supabase } from '../lib/supabase'
 import type { TaxPot } from '../lib/types'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts'
 import clsx from 'clsx'
@@ -133,6 +135,8 @@ export default function TaxOptimizer() {
   // ── LIVE portfolio earnings — used to compute real tax data ───────────────
   const { allTimeTotal, monthTotal, weekTotal } = usePortfolioEarnings()
   const [running, setRunning] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const qc = useQueryClient()
 
   // Build quarterly estimates from live income data
   const QUARTERLY = buildQuarterly(allTimeTotal, monthTotal, weekTotal)
@@ -191,16 +195,59 @@ export default function TaxOptimizer() {
           <p className="text-lumina-dim text-sm">PuLP auto-routing · computed from live income · quarterly vault</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-ghost flex items-center gap-2 text-sm">
+          <button
+            className="btn-ghost flex items-center gap-2 text-sm disabled:opacity-50"
+            onClick={async () => {
+              setExporting(true)
+              try {
+                const { data } = await supabase.from('tax_entries').select('*')
+                const csv = [
+                  ['Date', 'Description', 'Amount', 'Category', 'Deductible'].join(','),
+                  ...(data ?? []).map((e: Record<string, unknown>) =>
+                    [e.date, `"${e.description}"`, e.amount, e.category, e.deductible].join(',')
+                  ),
+                ].join('\n')
+                const blob = new Blob([csv], { type: 'text/csv' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `tax-export-${new Date().toISOString().slice(0, 10)}.csv`
+                a.click()
+                URL.revokeObjectURL(url)
+              } finally {
+                setExporting(false)
+              }
+            }}
+            disabled={exporting}
+          >
             <Download size={14} />
-            Export CPA
+            {exporting ? 'Exporting...' : 'Export CPA'}
           </button>
           <button
-            className="btn-pulse flex items-center gap-2 text-sm"
-            onClick={() => { setRunning(true); setTimeout(() => setRunning(false), 2000) }}
+            className="btn-pulse flex items-center gap-2 text-sm disabled:opacity-50"
+            onClick={async () => {
+              setRunning(true)
+              try {
+                // Compute 30% tax set-aside for each income source
+                const taxSetAside = Math.round(allTimeTotal * 0.30)
+                // Update tax_pot in Supabase
+                const { error } = await supabase
+                  .from('tax_pot')
+                  .update({ balance: taxSetAside })
+                  .gt('id', '0')
+                if (error) throw error
+                void qc.invalidateQueries({ queryKey: ['tax-pot'] })
+                alert(`Tax optimization complete. Set-aside: $${taxSetAside.toLocaleString()}`)
+              } catch (err) {
+                console.error('PuLP error:', err)
+              } finally {
+                setRunning(false)
+              }
+            }}
+            disabled={running}
           >
             <RefreshCw size={14} className={running ? 'animate-spin' : ''} />
-            Run PuLP
+            {running ? 'Running...' : 'Run PuLP'}
           </button>
         </div>
       </div>

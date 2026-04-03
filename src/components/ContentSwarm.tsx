@@ -70,12 +70,26 @@ export default function ContentSwarm() {
   const qc = useQueryClient()
   const [generating, setGenerating] = useState(false)
 
-  function generate() {
+  async function generate() {
     setGenerating(true)
-    setTimeout(() => {
+    try {
+      const { error } = await supabase.from('ugc_creatives').insert({
+        title: `AI Generated Creative ${new Date().toLocaleTimeString()}`,
+        platform: 'TikTok',
+        status: 'draft',
+        views: 0,
+        ctr: 0,
+        roas: 0,
+        tool: 'Kling AI',
+      })
+      if (error) throw error
+      await new Promise(r => setTimeout(r, 3000))
+      void qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
+    } catch (err) {
+      console.error('Generation failed:', err)
+    } finally {
       setGenerating(false)
-      qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
-    }, 3000)
+    }
   }
 
   const liveCreatives = creatives.filter((c) => c.status === 'live')
