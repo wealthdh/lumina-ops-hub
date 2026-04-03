@@ -18,7 +18,7 @@
 
 // Edge runtime does NOT support Stripe signature verification with crypto.subtle
 // easily, so we use Node.js runtime for webhook processing
-export const config = { runtime: 'nodejs18.x' }
+export const config = { runtime: 'nodejs' }
 
 // Simple Stripe signature verification using Node.js crypto
 import crypto from 'crypto'
