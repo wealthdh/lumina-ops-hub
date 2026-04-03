@@ -1,0 +1,206 @@
+/**
+ * Supabase Edge Function: stripe-webhook
+ *
+ * Receives real Stripe events (charge.succeeded, payment_intent.succeeded,
+ * invoice.paid) and logs them as income_entries so the dashboard shows live revenue.
+ *
+ * Setup in Stripe Dashboard:
+ *   Dashboard → Developers → Webhooks → Add endpoint
+ *   URL: https://<project>.supabase.co/functions/v1/stripe-webhook
+ *   Events: charge.succeeded, payment_intent.succeeded, invoice.paid, payout.paid
+ *
+ * Required env vars:
+ *   STRIPE_SECRET_KEY         — your Stripe secret key
+ *   STRIPE_WEBHOOK_SECRET     — from Stripe webhook signing secret
+ *   LUMINA_DEFAULT_JOB_ID     — fallback job ID if metadata.job_id not set
+ *   LUMINA_DEFAULT_USER_ID    — your Supabase auth user ID (for service-role inserts)
+ *
+ * To set:
+ *   supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_... LUMINA_DEFAULT_USER_ID=<your-user-id>
+ */
+import { serve }        from 'https://deno.land/std@0.177.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const CORS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
+}
+
+// ── Stripe signature verification (no SDK needed — pure crypto) ───────────────
+
+async function verifyStripeSignature(body: string, header: string, secret: string): Promise<boolean> {
+  try {
+    const parts: Record<string, string> = {}
+    for (const part of header.split(',')) {
+      const [k, v] = part.split('=')
+      if (k && v) parts[k] = v
+    }
+    const timestamp = parts['t']
+    const sig       = parts['v1']
+    if (!timestamp || !sig) return false
+
+    // HMAC-SHA256(secret, `${timestamp}.${body}`)
+    const key     = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const payload = new TextEncoder().encode(`${timestamp}.${body}`)
+    const hmac    = await crypto.subtle.sign('HMAC', key, payload)
+    const hex     = Array.from(new Uint8Array(hmac)).map(b => b.toString(16).padStart(2, '0')).join('')
+
+    // Constant-time compare
+    if (hex.length !== sig.length) return false
+    let diff = 0
+    for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ sig.charCodeAt(i)
+    if (diff !== 0) return false
+
+    // Reject events older than 5 minutes
+    const age = Math.abs(Date.now() / 1000 - Number(timestamp))
+    return age < 300
+  } catch {
+    return false
+  }
+}
+
+// ── Determine job ID from Stripe metadata ─────────────────────────────────────
+
+function resolveJobId(metadata: Record<string, string> | undefined, defaultJobId: string): string {
+  return metadata?.job_id ?? metadata?.jobId ?? metadata?.job ?? defaultJobId
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: CORS })
+
+  const body      = await req.text()
+  const sigHeader = req.headers.get('stripe-signature') ?? ''
+  const secret    = Deno.env.get('STRIPE_WEBHOOK_SECRET') ?? ''
+
+  // Verify signature
+  const valid = secret ? await verifyStripeSignature(body, sigHeader, secret) : true
+  if (!valid) {
+    console.error('Invalid Stripe signature')
+    return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400, headers: CORS })
+  }
+
+  let event: { id: string; type: string; data: { object: Record<string, unknown> } }
+  try {
+    event = JSON.parse(body)
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400, headers: CORS })
+  }
+
+  const admin = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  )
+
+  const defaultJobId  = Deno.env.get('LUMINA_DEFAULT_JOB_ID')  ?? 'j05'  // AI Lead-to-Cash Funnel
+  const defaultUserId = Deno.env.get('LUMINA_DEFAULT_USER_ID') ?? ''
+
+  // Idempotency: ignore if already processed
+  const { data: existing } = await admin
+    .from('stripe_events')
+    .select('id, processed')
+    .eq('id', event.id)
+    .maybeSingle()
+
+  if (existing?.processed) {
+    return new Response(JSON.stringify({ received: true, status: 'already_processed' }), { headers: { ...CORS, 'Content-Type': 'application/json' } })
+  }
+
+  const obj = event.data.object
+  let amountUsd: number | null = null
+  let jobId     = defaultJobId
+  let sourceRef = event.id
+  let description: string | null = null
+
+  try {
+    switch (event.type) {
+      // ── Successful charge ───────────────────────────────────────────────────
+      case 'charge.succeeded': {
+        const amount   = Number(obj.amount)          // in cents
+        const currency = String(obj.currency ?? 'usd').toLowerCase()
+        if (currency !== 'usd') break   // only USD for now
+        amountUsd   = amount / 100
+        jobId       = resolveJobId(obj.metadata as Record<string, string>, defaultJobId)
+        sourceRef   = String(obj.id ?? event.id)
+        description = String(obj.description ?? obj.statement_descriptor ?? 'Stripe charge')
+        break
+      }
+
+      // ── Payment intent succeeded ────────────────────────────────────────────
+      case 'payment_intent.succeeded': {
+        const amount   = Number(obj.amount)
+        const currency = String(obj.currency ?? 'usd').toLowerCase()
+        if (currency !== 'usd') break
+        amountUsd   = amount / 100
+        jobId       = resolveJobId(obj.metadata as Record<string, string>, defaultJobId)
+        sourceRef   = String(obj.id ?? event.id)
+        description = String(obj.description ?? 'Stripe payment')
+        break
+      }
+
+      // ── Invoice paid (recurring/subscription) ───────────────────────────────
+      case 'invoice.paid': {
+        const total    = Number(obj.amount_paid)
+        const currency = String(obj.currency ?? 'usd').toLowerCase()
+        if (currency !== 'usd') break
+        amountUsd   = total / 100
+        jobId       = resolveJobId(obj.metadata as Record<string, string>, defaultJobId)
+        sourceRef   = String(obj.id ?? event.id)
+        description = `Invoice paid: ${String(obj.number ?? 'recurring')}`
+        break
+      }
+
+      // ── Payout from Stripe (money leaving Stripe → your bank) ──────────────
+      case 'payout.paid': {
+        const amount = Number(obj.amount)
+        amountUsd   = amount / 100
+        jobId       = 'stripe_payout'
+        sourceRef   = String(obj.id ?? event.id)
+        description = `Stripe payout to ${String(obj.destination ?? 'bank')}`
+        break
+      }
+
+      default:
+        // Log but don't process other event types
+        console.log(`Unhandled event type: ${event.type}`)
+    }
+
+    // Insert income entry if we extracted a dollar amount
+    if (amountUsd && amountUsd > 0 && defaultUserId) {
+      const { error: insertError } = await admin.from('income_entries').insert({
+        user_id:     defaultUserId,
+        job_id:      jobId,
+        amount_usd:  amountUsd,
+        source:      'stripe',
+        source_ref:  sourceRef,
+        description: description,
+        earned_at:   new Date().toISOString(),
+      })
+
+      if (insertError) console.error('income_entries insert error:', insertError.message)
+    }
+
+    // Log the event
+    await admin.from('stripe_events').upsert({
+      id:          event.id,
+      type:        event.type,
+      amount_usd:  amountUsd,
+      customer_id: String(obj.customer ?? ''),
+      job_id:      jobId,
+      payload:     event,
+      processed:   amountUsd !== null,
+      received_at: new Date().toISOString(),
+    })
+
+    return new Response(
+      JSON.stringify({ received: true, amountUsd, jobId }),
+      { headers: { ...CORS, 'Content-Type': 'application/json' } },
+    )
+  } catch (err) {
+    console.error('stripe-webhook error:', err)
+    return new Response(
+      JSON.stringify({ error: String(err) }),
+      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } },
+    )
+  }
+})

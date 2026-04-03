@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    @apply bg-lumina-bg text-lumina-text font-sans antialiased;
+    background-image:
+      radial-gradient(ellipse at top, rgba(0,245,212,0.05) 0%, transparent 60%),
+      linear-gradient(rgba(0,245,212,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,212,0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 40px 40px, 40px 40px;
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: #0f1320; }
+  ::-webkit-scrollbar-thumb { background: #1e2640; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #00f5d440; }
+}
+
+@layer components {
+  .card {
+    @apply bg-lumina-card border border-lumina-border rounded-xl p-4 shadow-card;
+  }
+
+  .card-glow {
+    @apply card;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4), inset 0 0 20px rgba(0,245,212,0.03);
+  }
+
+  .btn-pulse {
+    @apply bg-lumina-pulse text-lumina-bg font-semibold px-4 py-2 rounded-lg
+           transition-all duration-200 hover:shadow-pulse hover:scale-[1.02] active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply border border-lumina-border text-lumina-dim px-4 py-2 rounded-lg
+           transition-all duration-200 hover:border-lumina-pulse hover:text-lumina-pulse;
+  }
+
+  .badge {
+    @apply text-xs font-mono px-2 py-0.5 rounded-full;
+  }
+
+  .badge-pulse   { @apply badge bg-lumina-pulse/20 text-lumina-pulse; }
+  .badge-gold    { @apply badge bg-lumina-gold/20 text-lumina-gold; }
+  .badge-danger  { @apply badge bg-lumina-danger/20 text-lumina-danger; }
+  .badge-success { @apply badge bg-lumina-success/20 text-lumina-success; }
+  .badge-violet  { @apply badge bg-lumina-violet/20 text-purple-400; }
+
+  .stat-value {
+    @apply text-2xl font-bold font-mono text-lumina-text;
+  }
+
+  .stat-label {
+    @apply text-xs text-lumina-dim uppercase tracking-widest;
+  }
+
+  .pulse-dot {
+    @apply w-2 h-2 rounded-full bg-lumina-pulse animate-pulse-fast;
+  }
+
+  .section-header {
+    @apply flex items-center gap-2 text-lumina-pulse text-xs font-mono uppercase tracking-widest mb-3;
+  }
+
+  .ticker-bar {
+    @apply flex gap-8 whitespace-nowrap font-mono text-xs text-lumina-dim;
+  }
+}
+
+/* Glow animations */
+.glow-pulse  { animation: glow 2s ease-in-out infinite alternate; }
+.glow-gold   { box-shadow: 0 0 16px rgba(245,196,0,0.4); }
+.glow-danger { box-shadow: 0 0 16px rgba(255,59,107,0.4); }
+
+/* Scan line overlay */
+.scan-overlay {
+  position: relative;
+  overflow: hidden;
+}
+.scan-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    transparent 0%,
+    rgba(0,245,212,0.03) 50%,
+    transparent 100%
+  );
+  background-size: 100% 8px;
+  animation: scan 4s linear infinite;
+  pointer-events: none;
+}
+
+/* Number counter animation */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.count-up { animation: countUp 0.4s ease-out; }
+
+/* ─── LIGHT MODE OVERRIDES ────────────────────────────────────────────────────
+   Because Tailwind compiles colors as hardcoded hex values, we override the
+   specific utility classes here when html.light-mode is active.
+   These rules have higher specificity (html.light-mode + class) and win.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+html.light-mode body {
+  background-color: #f8fafc !important;
+  background-image:
+    radial-gradient(ellipse at top, rgba(0,148,130,0.04) 0%, transparent 60%),
+    linear-gradient(rgba(0,148,130,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,148,130,0.03) 1px, transparent 1px) !important;
+  color: #0f172a !important;
+}
+
+/* Background colors */
+html.light-mode .bg-lumina-bg      { background-color: #f8fafc !important; }
+html.light-mode .bg-lumina-surface { background-color: #f1f5f9 !important; }
+html.light-mode .bg-lumina-card    { background-color: #ffffff !important; }
+
+/* Background opacity variants */
+html.light-mode .bg-lumina-bg\/30  { background-color: rgba(248,250,252,0.3) !important; }
+html.light-mode .bg-lumina-bg\/60  { background-color: rgba(248,250,252,0.6) !important; }
+html.light-mode .bg-lumina-card\/50{ background-color: rgba(255,255,255,0.5) !important; }
+
+/* Border colors */
+html.light-mode .border-lumina-border    { border-color: #cbd5e1 !important; }
+html.light-mode .border-lumina-border\/40 { border-color: rgba(203,213,225,0.4) !important; }
+html.light-mode .border-lumina-border\/50 { border-color: rgba(203,213,225,0.5) !important; }
+
+/* Text colors */
+html.light-mode .text-lumina-text  { color: #0f172a !important; }
+html.light-mode .text-lumina-dim   { color: #475569 !important; }
+html.light-mode .text-lumina-muted { color: #94a3b8 !important; }
+
+/* Scrollbars */
+html.light-mode ::-webkit-scrollbar-track { background: #f1f5f9 !important; }
+html.light-mode ::-webkit-scrollbar-thumb { background: #cbd5e1 !important; border-radius: 4px; }
+html.light-mode ::-webkit-scrollbar-thumb:hover { background: #94a3b8 !important; }
+
+/* Card shadows — soften for light mode */
+html.light-mode .card,
+html.light-mode .card-glow {
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 0 0 1px rgba(203,213,225,0.8) !important;
+}
+
+/* Sidebar specifically */
+html.light-mode aside {
+  background-color: #f1f5f9 !important;
+  border-right-color: #e2e8f0 !important;
+}
+
+/* Ticker/header bar at top */
+html.light-mode .bg-lumina-surface {
+  background-color: #f1f5f9 !important;
+}
+
+/* Input fields */
+html.light-mode input,
+html.light-mode select,
+html.light-mode textarea {
+  background-color: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+html.light-mode input::placeholder { color: #94a3b8 !important; }
+
+/* Tables */
+html.light-mode table { background-color: #ffffff !important; }
+html.light-mode tr:hover { background-color: rgba(248,250,252,0.8) !important; }
