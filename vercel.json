@@ -5,5 +5,15 @@
   "rewrites": [
     { "source": "/api/mt5/:path*", "destination": "/api/mt5" },
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/mt5-sync",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/revenue-sync",
+      "schedule": "*/10 * * * *"
+    }
   ]
 }
