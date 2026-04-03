@@ -13,7 +13,7 @@ import { Wallet, RefreshCw, ExternalLink, TrendingUp, ArrowDownLeft, ArrowUpRigh
 import clsx from 'clsx'
 
 const WALLET = '0xc77a0B887e182265d36C69E9588027328a9557A7'
-const BSCSCAN = 'https://api.bscscan.com/api'
+const BSC_RPC = 'https://bsc-dataseed.binance.org/'
 const USDT_CONTRACT = '0x55d398326f99059fF775485246999027B3197955'
 
 interface WalletData {
@@ -54,13 +54,22 @@ async function fetchBNBPrice(): Promise<number> {
   }
 }
 
-async function fetchBSCScanBalance(address: string): Promise<number> {
+/** Call BSC JSON-RPC (direct node — no API key, no deprecated BSCScan V1) */
+async function rpcCall(method: string, params: unknown[]): Promise<string> {
+  const res = await fetch(BSC_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 }),
+    signal: AbortSignal.timeout(8_000),
+  })
+  const d = await res.json() as { result?: string }
+  return d.result ?? '0x0'
+}
+
+async function fetchBNBBalance(address: string): Promise<number> {
   try {
-    const url = `${BSCSCAN}?module=account&action=balance&address=${address}&tag=latest`
-    const r   = await fetchWithTimeout(url)
-    const d   = await r.json() as { result?: string; status?: string }
-    if (d.status !== '1' || !d.result) return 0
-    return Number(BigInt(d.result)) / 1e18
+    const hex = await rpcCall('eth_getBalance', [address, 'latest'])
+    return parseInt(hex, 16) / 1e18
   } catch {
     return 0
   }
@@ -68,33 +77,20 @@ async function fetchBSCScanBalance(address: string): Promise<number> {
 
 async function fetchUSDTBalance(address: string): Promise<number> {
   try {
-    const url = `${BSCSCAN}?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest`
-    const r   = await fetchWithTimeout(url)
-    const d   = await r.json() as { result?: string; status?: string }
-    if (d.status !== '1' || !d.result) return 0
-    return Number(BigInt(d.result)) / 1e18
+    // ERC-20 balanceOf(address) selector = 0x70a08231
+    const data = '0x70a08231000000000000000000000000' + address.slice(2).toLowerCase()
+    const hex = await rpcCall('eth_call', [{ to: USDT_CONTRACT, data }, 'latest'])
+    return parseInt(hex, 16) / 1e18
   } catch {
     return 0
   }
 }
 
-async function fetchRecentTxs(address: string, limit = 5): Promise<RecentTx[]> {
-  try {
-    const url = `${BSCSCAN}?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=desc&offset=${limit}&page=1`
-    const r   = await fetchWithTimeout(url)
-    const d   = await r.json() as { result?: Array<Record<string, string>>; status?: string }
-    if (d.status !== '1' || !Array.isArray(d.result)) return []
-    return d.result.slice(0, limit).map(tx => ({
-      hash:      tx.hash,
-      from:      tx.from,
-      to:        tx.to,
-      value:     (Number(tx.value) / 1e18).toFixed(4),
-      timeStamp: tx.timeStamp,
-      isIn:      tx.to?.toLowerCase() === address.toLowerCase(),
-    }))
-  } catch {
-    return []
-  }
+// BSCScan txlist V1 is deprecated — fall back to empty (RPC can't list txs)
+// We show balances accurately via RPC; txs require an indexer or paid API
+async function fetchRecentTxs(_address: string, _limit = 5): Promise<RecentTx[]> {
+  // TODO: integrate Moralis, Ankr, or BSCScan V2 paid plan for tx history
+  return []
 }
 
 export default function WalletPanel() {
@@ -108,7 +104,7 @@ export default function WalletPanel() {
     setError(null)
     try {
       const [bnbBalance, usdtBalance, bnbPrice, recentTxs] = await Promise.all([
-        fetchBSCScanBalance(WALLET),
+        fetchBNBBalance(WALLET),
         fetchUSDTBalance(WALLET),
         fetchBNBPrice(),
         fetchRecentTxs(WALLET),
