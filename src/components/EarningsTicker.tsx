@@ -115,26 +115,26 @@ export default function EarningsTicker() {
       {/* Main ticker */}
       <div className="text-center py-4">
         <div className="text-4xl font-bold text-lumina-success">
-          $<AnimatedNumber value={displayValue} />
+          $<AnimatedNumber value={todayReal > 0 ? displayValue : 0} />
         </div>
         <div className="text-xs text-lumina-dim mt-1">
-          {todayReal > 0 ? 'Real + projected earnings today' : 'Projected earnings today'}
+          {todayReal > 0 ? 'Real earnings today' : totalDailyRate > 0 ? 'Awaiting first real income' : 'No real earnings yet — connect revenue pipes'}
         </div>
       </div>
 
-      {/* Rate breakdown */}
+      {/* Rate breakdown — only show real rates when there are actual earnings */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-lumina-bg/40 rounded-lg p-2 text-center">
           <div className="text-[9px] text-lumina-muted">Per Second</div>
-          <div className="text-xs font-mono text-lumina-text">${perSecondRate.toFixed(4)}</div>
+          <div className="text-xs font-mono text-lumina-text">{todayReal > 0 ? `$${perSecondRate.toFixed(4)}` : '—'}</div>
         </div>
         <div className="bg-lumina-bg/40 rounded-lg p-2 text-center">
           <div className="text-[9px] text-lumina-muted">Per Minute</div>
-          <div className="text-xs font-mono text-lumina-text">${(perSecondRate * 60).toFixed(2)}</div>
+          <div className="text-xs font-mono text-lumina-text">{todayReal > 0 ? `$${(perSecondRate * 60).toFixed(2)}` : '—'}</div>
         </div>
         <div className="bg-lumina-bg/40 rounded-lg p-2 text-center">
           <div className="text-[9px] text-lumina-muted">Per Hour</div>
-          <div className="text-xs font-mono text-lumina-text">${hourlyRate.toFixed(2)}</div>
+          <div className="text-xs font-mono text-lumina-text">{todayReal > 0 ? `$${hourlyRate.toFixed(2)}` : '—'}</div>
         </div>
       </div>
 
@@ -159,7 +159,7 @@ export default function EarningsTicker() {
       {/* Active jobs count */}
       <div className="mt-3 flex items-center gap-1.5 text-xs text-lumina-dim">
         <Zap size={10} className="text-lumina-pulse" />
-        {jobs.filter(j => j.status === 'active' || j.status === 'scaling').length} active jobs generating revenue
+        {jobs.filter(j => j.status === 'active' || j.status === 'scaling').length} active jobs{todayReal > 0 ? ' generating revenue' : ' — awaiting real income'}
       </div>
     </div>
   )

@@ -176,11 +176,11 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
         <div className="bg-lumina-bg/60 rounded-lg p-2">
           <div className="stat-label mb-0.5">Daily</div>
           <div className="font-mono font-bold text-lumina-success text-sm">
-            +${job.dailyProfit.toLocaleString()}
+            {job.dailyProfit > 0 ? `+$${job.dailyProfit.toLocaleString()}` : '$0'}
           </div>
         </div>
         <div className="bg-lumina-bg/60 rounded-lg p-2">
-          <div className="stat-label mb-0.5">Monthly</div>
+          <div className="stat-label mb-0.5">Mo. Target</div>
           <div className="font-mono font-bold text-lumina-text text-sm">
             ${job.monthlyProfit.toLocaleString()}
           </div>

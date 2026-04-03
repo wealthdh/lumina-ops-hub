@@ -172,15 +172,15 @@ function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Today's PnL"
-          value={pnl.total !== 0 ? `${pnl.total >= 0 ? '+' : ''}$${pnl.total.toLocaleString()}` : '—'}
-          sub="MT5 + Polymarket"
+          value={pnl.total !== 0 ? `${pnl.total >= 0 ? '+' : ''}$${pnl.total.toLocaleString()}` : '$0'}
+          sub="MT5 + Polymarket (real)"
           color="text-lumina-success"
           pulse
         />
         <StatCard
-          label="Monthly Revenue"
+          label="Monthly Target"
           value={stats.totalMonthly > 0 ? `$${(stats.totalMonthly / 1000).toFixed(1)}k` : '—'}
-          sub={stats.totalProjected > 0 ? `Proj: $${(stats.totalProjected / 1000).toFixed(1)}k` : undefined}
+          sub={stats.totalProjected > 0 ? `Goal: $${(stats.totalProjected / 1000).toFixed(1)}k` : 'Set targets'}
           color="text-lumina-pulse"
         />
         <StatCard
@@ -193,7 +193,7 @@ function Dashboard() {
         <div className="card-glow flex flex-col gap-2">
           <div className="stat-label">Today's Earnings</div>
           <div className="stat-value text-lumina-success">
-            {totalAvailable > 0 ? `$${totalAvailable.toLocaleString()}` : '—'}
+            {totalAvailable > 0 ? `$${totalAvailable.toLocaleString()}` : '$0'}
           </div>
           <div className="text-[10px] text-lumina-dim">
             {stats.activeCount > 0 ? `${stats.activeCount} active jobs` : 'No active jobs'}
