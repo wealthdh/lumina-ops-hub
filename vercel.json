@@ -3,6 +3,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    { "source": "/api/mt5/:path*", "destination": "/api/mt5" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
