@@ -1,3 +1,4 @@
+// Stripe Payment Links API - creates products + payment URLs
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
