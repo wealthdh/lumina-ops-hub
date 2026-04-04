@@ -1,4 +1,3 @@
-// Stripe Payment Links API - creates products + payment URLs
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
@@ -34,6 +33,7 @@ const products = [
 ];
 
 export default async function handler(req, res) {
+  // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -55,39 +55,51 @@ export default async function handler(req, res) {
     const results = [];
 
     for (const product of products) {
+      // Check if product already exists in database
       const { data: existing } = await supabase
         .from('stripe_products')
         .select('*')
-        .eq('product_name', product.name)
+        .eq('name', product.name)
         .single();
 
       if (existing) {
         results.push({
-          product_name: product.name,
+          name: product.name,
           payment_url: existing.payment_url,
           status: 'already_exists',
         });
         continue;
       }
 
+      // Create Stripe product
       const stripeProduct = await stripe.products.create({
         name: product.name,
         description: product.description,
-        metadata: { internal_product_name: product.name },
+        metadata: {
+          internal_product_name: product.name,
+        },
       });
 
+      // Create price
       const price = await stripe.prices.create({
         product: stripeProduct.id,
         unit_amount: product.price,
         currency: 'usd',
       });
 
+      // Create payment link
       const paymentLink = await stripe.paymentLinks.create({
-        line_items: [{ price: price.id, quantity: 1 }],
+        line_items: [
+          {
+            price: price.id,
+            quantity: 1,
+          },
+        ],
       });
 
+      // Insert into Supabase
       const { error } = await supabase.from('stripe_products').insert({
-        product_name: product.name,
+        name: product.name,
         stripe_product_id: stripeProduct.id,
         stripe_price_id: price.id,
         stripe_payment_link_id: paymentLink.id,
@@ -99,7 +111,7 @@ export default async function handler(req, res) {
       if (error) throw error;
 
       results.push({
-        product_name: product.name,
+        name: product.name,
         payment_url: paymentLink.url,
         status: 'created',
       });
