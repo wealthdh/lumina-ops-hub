@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Zap, Users, Shield, GitBranch,
   Video, TrendingUp, DollarSign, ChevronLeft, ChevronRight,
   Activity, Cpu, History, Sun, Moon, Bell,
-  Megaphone, Bot, BrainCircuit, GraduationCap, Landmark, Settings,
+  Megaphone, Bot, BrainCircuit, GraduationCap, Landmark,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useNotificationPermission } from '../hooks/useNotifications'
@@ -32,7 +32,6 @@ const NAV_ITEMS = [
   { id: 'agent-orchestrator', label: 'Agent Fleet',      icon: BrainCircuit },
   { id: 'education',      label: 'AI Education Hub',    icon: GraduationCap },
   { id: 'tax-optimizer',  label: 'Tax Shield Vault',    icon: Landmark },
-  { id: 'settings',       label: 'Settings',             icon: Settings },
 ]
 
 export default function Sidebar({ activeTab, onTabChange, collapsed, onToggle, isDark = true, onThemeToggle }: SidebarProps) {
@@ -125,6 +124,10 @@ export default function Sidebar({ activeTab, onTabChange, collapsed, onToggle, i
             <div className="pulse-dot" />
             <span className="text-lumina-success text-xs">Bridge Connected</span>
           </div>
+          <div className="flex items-center gap-1.5 mt-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-lumina-pulse animate-pulse" />
+            <span className="text-lumina-pulse text-[10px] font-semibold">24/7 AUTO · ALL JOBS LIVE</span>
+          </div>
         </div>
       )}
 
@@ -140,3 +143,4 @@ export default function Sidebar({ activeTab, onTabChange, collapsed, onToggle, i
     </aside>
   )
 }
+
