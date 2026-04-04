@@ -6,3 +6,4 @@ React + Vite + TypeScript + Tailwind CSS + Supabase
 
 <!-- Deploy trigger: stripe SDK added -->
 <!-- Fresh deploy trigger v2 -->
+<!-- Deploy trigger v3: installCommand added to vercel.json -->
