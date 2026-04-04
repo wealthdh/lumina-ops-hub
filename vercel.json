@@ -4,41 +4,17 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "functions": {
-    "api/create-payment-links.js": {
-      "memory": 512,
-      "maxDuration": 30
-    },
-    "api/products.js": {
-      "memory": 512,
-      "maxDuration": 30
-    },
-    "api/stripe-webhook.js": {
-      "memory": 512,
-      "maxDuration": 30
-    },
-    "api/revenue-sync.js": {
-      "memory": 512,
-      "maxDuration": 60
-    },
-    "api/mt5-sync.js": {
-      "memory": 512,
-      "maxDuration": 60
-    }
+    "api/create-payment-links.js": { "memory": 512, "maxDuration": 30 },
+    "api/products.js": { "memory": 512, "maxDuration": 30 },
+    "api/stripe-webhook.js": { "memory": 512, "maxDuration": 30 },
+    "api/revenue-sync.js": { "memory": 512, "maxDuration": 60 },
+    "api/mt5-sync.js": { "memory": 512, "maxDuration": 60 }
   },
   "crons": [
-    {
-      "path": "/api/revenue-sync",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/mt5-sync",
-      "schedule": "*/15 * * * *"
-    }
+    { "path": "/api/revenue-sync", "schedule": "0 * * * *" },
+    { "path": "/api/mt5-sync", "schedule": "*/15 * * * *" }
   ]
-}
+}3
