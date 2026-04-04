@@ -2,17 +2,17 @@ import { useState } from 'react'
 import {
   TrendingUp, TrendingDown, Copy, DollarSign, AlertTriangle,
   ChevronDown, ChevronUp, Play, Pause, X, CheckCircle, Clock, PlusCircle,
-  BarChart2, Zap, ListChecks, MoreVertical,
+  BarChart2, Zap, ListChecks,
 } from 'lucide-react'
 import clsx from 'clsx'
 import type { Job, AutoTask } from '../lib/types'
 import IncomeEntryModal from './IncomeEntryModal'
-import { useUpdateJobStatus, useCloneJob } from '../hooks/useJobs'
+import { useUpdateJobStatus } from '../hooks/useJobs'
 import { useJobIncomeEntries } from '../hooks/useIncomeEntries'
 
 const STATUS_CONFIG = {
-  active:   { label: 'LIVE',    classes: 'badge-success' },
-  scaling:  { label: 'SCALING', classes: 'badge-pulse' },
+  active:   { label: 'LIVE 24/7', classes: 'badge-success' },
+  scaling:  { label: 'SCALING 24/7', classes: 'badge-pulse' },
   paused:   { label: 'PAUSED',  classes: 'badge-gold' },
   killed:   { label: 'KILLED',  classes: 'badge-danger' },
   pending:  { label: 'PENDING', classes: 'badge bg-lumina-muted/20 text-lumina-dim' },
@@ -134,9 +134,7 @@ function ExpandedDetail({ job }: { job: Job }) {
 export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
   const [expanded,        setExpanded]        = useState(false)
   const [showIncomeEntry, setShowIncomeEntry] = useState(false)
-  const [showDropdown,    setShowDropdown]    = useState(false)
   const updateStatus = useUpdateJobStatus()
-  const cloneJob = useCloneJob()
   const status = STATUS_CONFIG[job.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending
 
   const riskColor =
@@ -152,7 +150,7 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
 
   return (
     <div className={clsx(
-      'card-glow transition-all duration-200 hover:border-lumina-pulse/40 relative',
+      'card-glow transition-all duration-200 hover:border-lumina-pulse/40',
       job.status === 'active'  && 'border-lumina-border',
       job.status === 'scaling' && 'border-lumina-pulse/30',
       job.status === 'killed'  && 'opacity-60',
@@ -167,8 +165,8 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <span className={clsx('badge', status.classes)}>{status.label}</span>
-          {job.status === 'active' && (
-            <div className="w-1.5 h-1.5 rounded-full bg-lumina-success animate-pulse-fast" />
+          {(job.status === 'active' || job.status === 'scaling') && (
+            <div className="w-1.5 h-1.5 rounded-full bg-lumina-success animate-pulse-fast" title="Auto-executing 24/7" />
           )}
         </div>
       </div>
@@ -178,11 +176,11 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
         <div className="bg-lumina-bg/60 rounded-lg p-2">
           <div className="stat-label mb-0.5">Daily</div>
           <div className="font-mono font-bold text-lumina-success text-sm">
-            {job.dailyProfit > 0 ? `+$${job.dailyProfit.toLocaleString()}` : '$0'}
+            +${job.dailyProfit.toLocaleString()}
           </div>
         </div>
         <div className="bg-lumina-bg/60 rounded-lg p-2">
-          <div className="stat-label mb-0.5">Mo. Target</div>
+          <div className="stat-label mb-0.5">Monthly</div>
           <div className="font-mono font-bold text-lumina-text text-sm">
             ${job.monthlyProfit.toLocaleString()}
           </div>
@@ -195,6 +193,15 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
           </div>
         </div>
       </div>
+
+      {/* 24/7 Execution Status */}
+      {(job.status === 'active' || job.status === 'scaling') && (
+        <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 rounded-lg bg-lumina-success/5 border border-lumina-success/20">
+          <div className="w-2 h-2 rounded-full bg-lumina-success animate-pulse-fast" />
+          <span className="text-[11px] font-semibold text-lumina-success">AUTO-EXECUTING 24/7</span>
+          <span className="text-[10px] text-lumina-dim ml-auto font-mono">Hands-off</span>
+        </div>
+      )}
 
       {/* Risk / Synergy / ROI bar */}
       <div className="flex items-center gap-3 text-xs mb-3">
@@ -262,69 +269,42 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
             : 'Cash Out'}
         </button>
 
-        {/* Dropdown menu for Clone, Pause/Play, Kill */}
-        <div className="relative">
+        <button
+          className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5"
+          onClick={() => { if (job.cloneUrl) window.open(job.cloneUrl, '_blank') }}
+          disabled={!job.cloneUrl}
+          title={job.cloneUrl ? 'Clone this job' : 'No clone URL configured'}
+        >
+          <Copy size={12} />
+          Clone
+        </button>
+
+        <button
+          className="btn-ghost text-xs py-1.5 px-2 disabled:opacity-40"
+          title={job.status === 'active' || job.status === 'scaling' ? 'Pause job' : 'Resume job'}
+          disabled={updateStatus.isPending}
+          onClick={() => {
+            const next = (job.status === 'active' || job.status === 'scaling') ? 'paused' : 'active'
+            void updateStatus.mutate({ id: job.id, status: next })
+          }}
+        >
+          {job.status === 'active' || job.status === 'scaling' ? <Pause size={12} /> : <Play size={12} />}
+        </button>
+
+        {job.status !== 'killed' && (
           <button
-            className="btn-ghost text-xs py-1.5 px-2 flex items-center justify-center"
-            onClick={() => setShowDropdown(!showDropdown)}
-            title="More actions"
+            className="btn-ghost text-xs py-1.5 px-2 hover:border-lumina-danger hover:text-lumina-danger disabled:opacity-40"
+            title="Kill job permanently"
+            disabled={updateStatus.isPending}
+            onClick={() => {
+              if (window.confirm(`Kill "${job.name}"? This will stop all auto-tasks.`)) {
+                void updateStatus.mutate({ id: job.id, status: 'killed' })
+              }
+            }}
           >
-            <MoreVertical size={12} />
+            <X size={12} />
           </button>
-
-          {/* Dropdown menu - positioned absolutely, contained within card bounds */}
-          {showDropdown && (
-            <div className="absolute right-0 mt-1 w-40 bg-lumina-card border border-lumina-border rounded-lg shadow-lg z-50 overflow-hidden">
-              {/* Clone */}
-              <button
-                className="w-full text-left text-xs py-2.5 px-3 flex items-center gap-2 hover:bg-lumina-bg text-lumina-dim hover:text-lumina-pulse transition-colors border-b border-lumina-border/50"
-                onClick={() => {
-                  setShowDropdown(false)
-                  if (window.confirm(`Clone "${job.name}"? A paused copy will be created.`)) {
-                    cloneJob.mutate(job)
-                  }
-                }}
-                disabled={cloneJob.isPending}
-              >
-                <Copy size={11} />
-                {cloneJob.isPending ? 'Cloning...' : 'Clone'}
-              </button>
-
-              {/* Pause / Play */}
-              <button
-                className="w-full text-left text-xs py-2.5 px-3 flex items-center gap-2 hover:bg-lumina-bg text-lumina-dim hover:text-lumina-pulse transition-colors border-b border-lumina-border/50 disabled:opacity-40"
-                disabled={updateStatus.isPending}
-                onClick={() => {
-                  setShowDropdown(false)
-                  const next = (job.status === 'active' || job.status === 'scaling') ? 'paused' : 'active'
-                  void updateStatus.mutate({ id: job.id, status: next })
-                }}
-                title={job.status === 'active' || job.status === 'scaling' ? 'Pause job' : 'Resume job'}
-              >
-                {job.status === 'active' || job.status === 'scaling' ? <Pause size={11} /> : <Play size={11} />}
-                {job.status === 'active' || job.status === 'scaling' ? 'Pause' : 'Resume'}
-              </button>
-
-              {/* Kill - only show if not already killed */}
-              {job.status !== 'killed' && (
-                <button
-                  className="w-full text-left text-xs py-2.5 px-3 flex items-center gap-2 hover:bg-lumina-danger/10 text-lumina-danger hover:text-lumina-danger transition-colors disabled:opacity-40"
-                  disabled={updateStatus.isPending}
-                  onClick={() => {
-                    setShowDropdown(false)
-                    if (window.confirm(`Kill "${job.name}"? This will stop all auto-tasks.`)) {
-                      void updateStatus.mutate({ id: job.id, status: 'killed' })
-                    }
-                  }}
-                  title="Kill job permanently"
-                >
-                  <X size={11} />
-                  Kill Job
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        )}
 
         <button
           onClick={() => setExpanded((e) => !e)}
@@ -344,3 +324,4 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
     </div>
   )
 }
+
