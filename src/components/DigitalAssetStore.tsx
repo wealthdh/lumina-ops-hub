@@ -1,16 +1,21 @@
 /**
- * Digital Asset Store
- * Create once, sell infinite times: Trading indicators, templates, AI prompt packs, datasets
- * NOW: Fetches real products from stripe_products table and sales from income_entries table
+ * Digital Asset Store â REAL DATA ONLY
+ *
+ * - Products from stripe_products table
+ * - Sales from orders table (written by verified webhook only)
+ * - Revenue from orders table (NOT income_entries guesswork)
+ * - Checkout success/failure states from URL params after Stripe redirect
+ * - Realtime subscriptions on both tables
+ *
+ * NO fake data. NO simulated revenue. Only confirmed Stripe payments.
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { Package, ShoppingCart, Star, TrendingUp, Plus, ExternalLink, BarChart3, Award, AlertCircle, Users, Zap, CreditCard } from 'lucide-react'
+import { Package, ShoppingCart, Star, TrendingUp, Plus, ExternalLink, BarChart3, Award, AlertCircle, Users, Zap, CreditCard, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 
 // âââ Types ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// Raw shape from stripe_products table
 interface StripeProductRow {
   id: string
   product_name: string
@@ -24,7 +29,6 @@ interface StripeProductRow {
   updated_at: string
 }
 
-// Normalized shape used by the component
 interface StripeProduct {
   id: string
   name: string
@@ -34,14 +38,15 @@ interface StripeProduct {
   created_at: string
 }
 
-interface IncomeEntry {
+interface OrderRow {
   id: string
+  stripe_session_id: string
+  product_id: string | null
+  buyer_email: string
   amount: number
-  source: string
+  currency: string
+  payment_status: string
   created_at: string
-  description?: string
-  reference_id?: string | null
-  [key: string]: unknown
 }
 
 interface DailySalesData {
@@ -80,7 +85,7 @@ function SimpleBarChart({ data }: { data: DailySalesData[] }) {
     <div className="h-32 flex items-end justify-between gap-2">
       {data.map((d) => (
         <div key={d.day} className="flex-1 flex flex-col items-center gap-2">
-          <div className="w-full bg-lumina-bg rounded-sm overflow-hidden">
+          <div className="w-full bg-lumina-bg rounded-sm overflow-hidden" style={{ height: '100%' }}>
             <div
               className="bg-gradient-to-t from-lumina-pulse to-lumina-pulse/60 rounded-sm transition-all duration-300"
               style={{ height: `${(d.revenue / maxRevenue) * 100}%`, minHeight: d.revenue > 0 ? '4px' : '0' }}
@@ -93,14 +98,46 @@ function SimpleBarChart({ data }: { data: DailySalesData[] }) {
   )
 }
 
+/** Checkout result banner â shown after Stripe redirect */
+function CheckoutBanner({ status, product, onDismiss }: { status: 'success' | 'cancelled'; product?: string; onDismiss: () => void }) {
+  if (status === 'success') {
+    return (
+      <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg flex items-start gap-3 animate-fade-in">
+        <CheckCircle size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-emerald-300">Payment confirmed!</p>
+          <p className="text-xs text-emerald-300/70 mt-1">
+            {product ? `Your purchase of "${product}" is being processed.` : 'Your order is being processed.'}{' '}
+            You'll receive a confirmation email shortly.
+          </p>
+        </div>
+        <button onClick={onDismiss} className="text-emerald-400/50 hover:text-emerald-400 text-xs">Dismiss</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-3 animate-fade-in">
+      <XCircle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-amber-300">Checkout cancelled</p>
+        <p className="text-xs text-amber-300/70 mt-1">No charge was made. You can try again anytime.</p>
+      </div>
+      <button onClick={onDismiss} className="text-amber-400/50 hover:text-amber-400 text-xs">Dismiss</button>
+    </div>
+  )
+}
+
 // âââ Main Component âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 export default function DigitalAssetStore() {
   const [products, setProducts] = useState<ProductWithSales[]>([])
-  const [incomeEntries, setIncomeEntries] = useState<IncomeEntry[]>([])
+  const [orders, setOrders] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [initializing, setInitializing] = useState(false)
+  const [checkoutStatus, setCheckoutStatus] = useState<'success' | 'cancelled' | null>(null)
+  const [checkoutProduct, setCheckoutProduct] = useState<string | undefined>(undefined)
 
   const [newProduct, setNewProduct] = useState({
     name: '',
@@ -109,7 +146,24 @@ export default function DigitalAssetStore() {
     description: '',
   })
 
-  // Fetch products and income data
+  // ââ Check URL params for checkout result on mount âââââââââââââââââââââââââ
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const checkout = params.get('checkout')
+    const product = params.get('product')
+
+    if (checkout === 'success') {
+      setCheckoutStatus('success')
+      if (product) setCheckoutProduct(decodeURIComponent(product))
+      // Clean URL without reload
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (checkout === 'cancelled') {
+      setCheckoutStatus('cancelled')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  // ââ Fetch products + orders (REAL data only) ââââââââââââââââââââââââââââââ
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
@@ -125,7 +179,7 @@ export default function DigitalAssetStore() {
         throw new Error(`Failed to fetch products: ${productsError.message}`)
       }
 
-      // Normalize column names: product_name â name, price_cents â price (dollars)
+      // Normalize column names
       const productsData: StripeProduct[] = (rawProducts || []).map((row: StripeProductRow) => ({
         id: row.id,
         name: row.product_name,
@@ -135,29 +189,27 @@ export default function DigitalAssetStore() {
         created_at: row.created_at,
       }))
 
-      // Fetch income entries (stripe source only)
-      const { data: incomeData, error: incomeError } = await supabase
-        .from('income_entries')
-        .select('*')
-        .eq('source', 'stripe')
+      // Fetch REAL orders from orders table (written by webhook only)
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('id, stripe_session_id, product_id, buyer_email, amount, currency, payment_status, created_at')
+        .eq('payment_status', 'paid')
         .order('created_at', { ascending: false })
 
-      if (incomeError) {
-        throw new Error(`Failed to fetch income: ${incomeError.message}`)
+      if (ordersError) {
+        console.warn('Orders table may not exist yet:', ordersError.message)
+        // Don't throw â orders table might not be created yet
       }
 
-      setIncomeEntries(incomeData || [])
+      const realOrders: OrderRow[] = ordersData || []
+      setOrders(realOrders)
 
-      // Enrich products with sales data
-      // Match income entries to products by checking if description contains the product name
+      // Enrich products with REAL sales data from orders table
       const enrichedProducts = productsData.map((prod) => {
-        const productSales = (incomeData || []).filter((entry: IncomeEntry) => {
-          const desc = entry.description || ''
-          return desc.toLowerCase().includes(prod.name.toLowerCase().slice(0, 20))
-        })
-
-        const salesCount = productSales.length
-        const productRevenue = productSales.reduce((sum: number, entry: IncomeEntry) => sum + entry.amount, 0)
+        // Match orders by product_id (set by webhook when it matches stripe_products)
+        const productOrders = realOrders.filter((order) => order.product_id === prod.id)
+        const salesCount = productOrders.length
+        const productRevenue = productOrders.reduce((sum, order) => sum + order.amount, 0)
 
         return {
           ...prod,
@@ -170,7 +222,7 @@ export default function DigitalAssetStore() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       setError(message)
-      console.error('DigitalAssetStore fetch error:', err)
+      console.error('[DigitalAssetStore] fetch error:', err)
     } finally {
       setLoading(false)
     }
@@ -190,23 +242,20 @@ export default function DigitalAssetStore() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'stripe_products' },
         () => {
+          console.log('[DigitalAssetStore] stripe_products changed â refetching')
           void fetchData()
         }
       )
       .subscribe()
 
-    // Subscribe to income_entries changes
-    const incomeChannel = supabase
-      .channel('income_entries_changes_digital_store')
+    // Subscribe to orders table (REAL sales)
+    const ordersChannel = supabase
+      .channel('orders_changes_digital_store')
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'income_entries',
-          filter: 'source=eq.stripe',
-        },
-        () => {
+        { event: 'INSERT', schema: 'public', table: 'orders' },
+        (payload) => {
+          console.log('[DigitalAssetStore] New order received:', payload.new)
           void fetchData()
         }
       )
@@ -214,22 +263,24 @@ export default function DigitalAssetStore() {
 
     return () => {
       void supabase.removeChannel(productsChannel)
-      void supabase.removeChannel(incomeChannel)
+      void supabase.removeChannel(ordersChannel)
     }
   }, [fetchData])
 
-  // Calculate stats
+  // ââ Calculate stats from REAL orders only âââââââââââââââââââââââââââââââââ
   const totalProducts = products.length
-  const totalSales = products.reduce((sum, p) => sum + p.sales_count, 0)
+  const totalSales = orders.length
   const thisMonth = new Date()
   const monthStart = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1)
   const monthStartStr = monthStart.toISOString().split('T')[0]
 
-  const revenueThisMonth = incomeEntries
-    .filter((entry) => entry.source === 'stripe' && entry.created_at?.split('T')[0] >= monthStartStr)
-    .reduce((sum, entry) => sum + entry.amount, 0)
+  const revenueThisMonth = orders
+    .filter((order) => order.created_at?.split('T')[0] >= monthStartStr)
+    .reduce((sum, order) => sum + order.amount, 0)
 
-  // Build daily sales chart (last 14 days)
+  const totalRevenue = orders.reduce((sum, order) => sum + order.amount, 0)
+
+  // Build daily sales chart (last 14 days) from REAL orders
   const getDailySalesData = (): DailySalesData[] => {
     const days: Map<string, { sales: number; revenue: number }> = new Map()
 
@@ -240,20 +291,19 @@ export default function DigitalAssetStore() {
       days.set(dateStr, { sales: 0, revenue: 0 })
     }
 
-    // Count sales and revenue per day
-    incomeEntries.forEach((entry) => {
-      if (entry.source === 'stripe') {
-        const existing = days.get(entry.created_at?.split('T')[0]) || { sales: 0, revenue: 0 }
+    // Count REAL orders per day
+    orders.forEach((order) => {
+      const dateStr = order.created_at?.split('T')[0]
+      const existing = days.get(dateStr)
+      if (existing) {
         existing.sales += 1
-        existing.revenue += entry.amount
-        days.set(entry.created_at?.split('T')[0], existing)
+        existing.revenue += order.amount
       }
     })
 
     return Array.from(days.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([dateStr, { sales, revenue }]) => {
-        // Format as short day number
         const d = new Date(dateStr)
         return {
           day: String(d.getDate()),
@@ -268,17 +318,19 @@ export default function DigitalAssetStore() {
   const handleInitializeStore = async () => {
     try {
       setInitializing(true)
+      setError(null)
+      console.log('[DigitalAssetStore] Initializing store â calling /api/create-payment-links')
       const response = await fetch('/api/create-payment-links', { method: 'POST' })
+      const data = await response.json()
       if (!response.ok) {
-        const text = await response.text()
-        throw new Error(`API error: ${response.status} ${text}`)
+        throw new Error(`API error: ${response.status} â ${data.error || data.details || 'Unknown'}`)
       }
-      // Refetch after initialization
+      console.log('[DigitalAssetStore] Store initialized:', data)
       await fetchData()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       setError(message)
-      console.error('Initialize store error:', err)
+      console.error('[DigitalAssetStore] Initialize error:', err)
     } finally {
       setInitializing(false)
     }
@@ -302,14 +354,13 @@ export default function DigitalAssetStore() {
         throw new Error(insertError.message)
       }
 
-      // Reset form
       setNewProduct({ name: '', price: '', status: 'draft', description: '' })
       setError(null)
       await fetchData()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       setError(message)
-      console.error('Create product error:', err)
+      console.error('[DigitalAssetStore] Create product error:', err)
     }
   }
 
@@ -319,9 +370,18 @@ export default function DigitalAssetStore() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lumina-text font-bold text-xl">Digital Asset Store</h1>
-          <p className="text-lumina-dim text-sm">Real-time product sales & revenue tracking</p>
+          <p className="text-lumina-dim text-sm">Real-time sales from verified Stripe payments only</p>
         </div>
       </div>
+
+      {/* Checkout result banner */}
+      {checkoutStatus && (
+        <CheckoutBanner
+          status={checkoutStatus}
+          product={checkoutProduct}
+          onDismiss={() => { setCheckoutStatus(null); setCheckoutProduct(undefined) }}
+        />
+      )}
 
       {/* Error Alert */}
       {error && (
@@ -331,14 +391,14 @@ export default function DigitalAssetStore() {
         </div>
       )}
 
-      {/* Revenue Stats Bar */}
+      {/* Revenue Stats Bar â ALL from real orders table */}
       <div className="grid grid-cols-4 gap-4">
         <div className="card-glow">
           <div className="stat-label">Total Products</div>
           <div className="stat-value text-lumina-text">{totalProducts}</div>
         </div>
         <div className="card-glow">
-          <div className="stat-label">Total Sales</div>
+          <div className="stat-label">Confirmed Sales</div>
           <div className="stat-value text-lumina-pulse">{totalSales}</div>
         </div>
         <div className="card-glow">
@@ -346,8 +406,8 @@ export default function DigitalAssetStore() {
           <div className="stat-value text-lumina-gold">${revenueThisMonth.toFixed(2)}</div>
         </div>
         <div className="card-glow">
-          <div className="stat-label">Avg Rating</div>
-          <div className="stat-value text-lumina-success">â</div>
+          <div className="stat-label">All-Time Revenue</div>
+          <div className="stat-value text-lumina-success">${totalRevenue.toFixed(2)}</div>
         </div>
       </div>
 
@@ -359,13 +419,16 @@ export default function DigitalAssetStore() {
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-lumina-dim">Loading products...</div>
+          <div className="p-8 text-center text-lumina-dim flex items-center justify-center gap-2">
+            <Loader2 size={16} className="animate-spin" />
+            Loading products...
+          </div>
         ) : products.length === 0 ? (
           <div className="space-y-4 p-6">
             <div className="p-6 bg-lumina-bg/60 rounded-xl border border-lumina-border text-center">
               <Package size={32} className="mx-auto mb-3 text-lumina-dim" />
               <p className="text-sm text-lumina-dim mb-4">
-                No products listed yet. Deploy API and run POST /api/create-payment-links to initialize your store.
+                No products listed yet. Click below to create Stripe products + payment links.
               </p>
               <button
                 onClick={handleInitializeStore}
@@ -375,8 +438,8 @@ export default function DigitalAssetStore() {
                   initializing ? 'bg-lumina-muted/20 text-lumina-dim cursor-not-allowed' : 'btn-pulse'
                 )}
               >
-                <Plus size={14} />
-                {initializing ? 'Initializing...' : 'Initialize Store'}
+                {initializing ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                {initializing ? 'Creating Stripe Products...' : 'Initialize Store'}
               </button>
             </div>
           </div>
@@ -398,25 +461,27 @@ export default function DigitalAssetStore() {
                 {/* Price and stats */}
                 <div className="flex items-baseline gap-3 mb-3">
                   <span className="text-lg font-bold text-lumina-gold">${product.price.toFixed(2)}</span>
-                  <span className="text-xs text-lumina-dim">{product.sales_count} sales</span>
-                  <span className="text-xs text-lumina-pulse font-mono">${product.product_revenue.toFixed(2)}</span>
+                  <span className="text-xs text-lumina-dim">{product.sales_count} sale{product.sales_count !== 1 ? 's' : ''}</span>
+                  {product.product_revenue > 0 && (
+                    <span className="text-xs text-lumina-pulse font-mono">${product.product_revenue.toFixed(2)} earned</span>
+                  )}
                 </div>
 
-                {/* Buy Now button */}
+                {/* Buy Now button â real Stripe payment link */}
                 {product.payment_url ? (
                   <a
                     href={product.payment_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-lumina-pulse hover:text-lumina-pulse/80 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-lumina-pulse/10 text-lumina-pulse hover:bg-lumina-pulse/20 transition-colors"
                   >
-                    <ExternalLink size={12} />
-                    Buy Now
+                    <ShoppingCart size={12} />
+                    Buy Now â Stripe Checkout
                   </a>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-lumina-dim">
                     <ExternalLink size={12} />
-                    No Payment Link
+                    No Payment Link â run Initialize Store
                   </span>
                 )}
               </div>
@@ -425,23 +490,60 @@ export default function DigitalAssetStore() {
         )}
       </div>
 
-      {/* Sales Chart */}
+      {/* Sales Chart â from REAL orders */}
       <div className="card-glow">
         <div className="section-header">
           <BarChart3 size={14} />
-          Sales Last 14 Days
+          Confirmed Sales â Last 14 Days
         </div>
         <div className="p-6">
-          <SimpleBarChart data={dailySalesData} />
-          <div className="flex justify-between mt-4 text-xs text-lumina-dim font-mono">
-            <span>14 days ago</span>
-            <span>Today</span>
-          </div>
+          {orders.length === 0 ? (
+            <div className="text-center text-lumina-dim text-sm py-8">
+              No confirmed sales yet. Chart will populate as orders come in.
+            </div>
+          ) : (
+            <>
+              <SimpleBarChart data={dailySalesData} />
+              <div className="flex justify-between mt-4 text-xs text-lumina-dim font-mono">
+                <span>14 days ago</span>
+                <span>Today</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
+      {/* Recent Orders â REAL verified payments */}
+      {orders.length > 0 && (
+        <div className="card-glow">
+          <div className="section-header">
+            <CreditCard size={14} />
+            Recent Verified Orders
+          </div>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {orders.slice(0, 10).map((order) => (
+              <div key={order.id} className="p-3 bg-lumina-bg/60 rounded-lg flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={12} className="text-emerald-400 flex-shrink-0" />
+                    <span className="text-xs text-lumina-text truncate">{order.buyer_email}</span>
+                  </div>
+                  <div className="text-[10px] text-lumina-dim mt-1 font-mono">
+                    {new Date(order.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-lumina-gold">${order.amount.toFixed(2)}</div>
+                  <div className="text-[10px] text-lumina-dim">{order.currency}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Top Sellers Leaderboard */}
-      {products.length > 0 && (
+      {products.some(p => p.product_revenue > 0) && (
         <div className="card-glow">
           <div className="section-header">
             <Award size={14} />
@@ -454,7 +556,6 @@ export default function DigitalAssetStore() {
               .sort((a, b) => b.product_revenue - a.product_revenue)
               .slice(0, 5)
               .map((product, idx) => {
-                const totalRevenue = products.reduce((sum, p) => sum + p.product_revenue, 0)
                 const percentage = totalRevenue > 0 ? (product.product_revenue / totalRevenue) * 100 : 0
 
                 return (
@@ -466,7 +567,7 @@ export default function DigitalAssetStore() {
                           <h4 className="text-sm font-medium text-lumina-text truncate">{product.name}</h4>
                         </div>
                         <div className="flex gap-3 text-xs text-lumina-dim">
-                          <span>{product.sales_count} sales</span>
+                          <span>{product.sales_count} sale{product.sales_count !== 1 ? 's' : ''}</span>
                           <span>${product.product_revenue.toFixed(2)}</span>
                         </div>
                       </div>
@@ -523,8 +624,8 @@ export default function DigitalAssetStore() {
             </ul>
             <button
               onClick={() => {
-                const stripeUrl = `https://buy.stripe.com/test_wholesale_agent`
-                window.open(stripeUrl, '_blank')
+                // TODO: Replace with real Stripe payment link once wholesale product is created
+                setError('Wholesale license payment link not yet configured. Run POST /api/create-payment-links to set up.')
               }}
               className="w-full btn-pulse text-xs py-2.5 flex items-center justify-center gap-2"
             >
@@ -559,8 +660,8 @@ export default function DigitalAssetStore() {
             </ul>
             <button
               onClick={() => {
-                const stripeUrl = `https://buy.stripe.com/test_reseller_pass`
-                window.open(stripeUrl, '_blank')
+                // TODO: Replace with real Stripe subscription link
+                setError('Reseller subscription link not yet configured. Create a recurring price in Stripe first.')
               }}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-xs bg-lumina-gold text-lumina-bg hover:bg-lumina-gold/90 transition-all"
             >
@@ -571,7 +672,7 @@ export default function DigitalAssetStore() {
         </div>
 
         <div className="text-[10px] text-lumina-dim text-center">
-          Stripe handles all payments, invoicing, and payouts automatically. You only see Money Flow / Cash Out History.
+          Stripe handles all payments, invoicing, and payouts. Revenue shown is from verified webhook events only.
         </div>
       </div>
 
@@ -619,6 +720,11 @@ export default function DigitalAssetStore() {
             Create Listing
           </button>
         </div>
+      </div>
+
+      {/* Debug: Data source indicator */}
+      <div className="text-[9px] text-lumina-dim/50 text-center font-mono">
+        Data source: orders table (webhook-verified) Â· {orders.length} orders Â· {products.length} products
       </div>
     </div>
   )
