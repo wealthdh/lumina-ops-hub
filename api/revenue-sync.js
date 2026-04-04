@@ -133,7 +133,7 @@ export default async function handler(req, res) {
  *   DEFAULT_USER_ID
  */
 
-export const config = { runtime: 'edge' }
+export const config = { runtime: 'nodejs' }
 
 const BSC_RPC = 'https://bsc-dataseed.binance.org/'
 const COLD_WALLET = '0xc77a0B887e182265d36C69E9588027328a9557A7'
