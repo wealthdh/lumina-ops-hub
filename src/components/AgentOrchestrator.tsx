@@ -12,9 +12,11 @@ import {
   Moon,
   BarChart3,
   AlertCircle,
+  CreditCard,
+  Users,
+  Shield,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { db, supabase } from '../lib/supabase';
 
 // Type definitions
 interface Agent {
@@ -41,6 +43,108 @@ interface PlanStage {
   completed: boolean;
 }
 
+// Mock data
+const AGENTS: Agent[] = [
+  {
+    id: 'alpha',
+    name: 'Agent Alpha',
+    role: 'Market Research',
+    status: 'active',
+    tasksCompleted: 47,
+    currentTask: 'Analyzing competitor Q1 reports',
+    cpuUsage: 72,
+    memoryUsage: 58,
+  },
+  {
+    id: 'beta',
+    name: 'Agent Beta',
+    role: 'Content Writer',
+    status: 'active',
+    tasksCompleted: 31,
+    currentTask: 'Drafting quarterly newsletter',
+    cpuUsage: 45,
+    memoryUsage: 42,
+  },
+  {
+    id: 'gamma',
+    name: 'Agent Gamma',
+    role: 'Code Generator',
+    status: 'idle',
+    tasksCompleted: 22,
+    currentTask: 'Waiting for task assignment',
+    cpuUsage: 8,
+    memoryUsage: 15,
+  },
+  {
+    id: 'delta',
+    name: 'Agent Delta',
+    role: 'Data Analyst',
+    status: 'active',
+    tasksCompleted: 56,
+    currentTask: 'Processing sales pipeline data',
+    cpuUsage: 88,
+    memoryUsage: 76,
+  },
+  {
+    id: 'epsilon',
+    name: 'Agent Epsilon',
+    role: 'Lead Qualifier',
+    status: 'paused',
+    tasksCompleted: 18,
+    currentTask: 'Task paused by administrator',
+    cpuUsage: 0,
+    memoryUsage: 12,
+  },
+  {
+    id: 'zeta',
+    name: 'Agent Zeta',
+    role: 'Tax Optimizer',
+    status: 'active',
+    tasksCompleted: 12,
+    currentTask: 'Optimizing Q1 tax deductions',
+    cpuUsage: 52,
+    memoryUsage: 38,
+  },
+];
+
+const QUEUE_TASKS: Task[] = [
+  {
+    id: 'task-001',
+    description: 'Generate weekly performance report',
+    assignedAgent: 'Agent Delta',
+    priority: 'high',
+    estimatedTime: '12 min',
+  },
+  {
+    id: 'task-002',
+    description: 'Research industry trends for tech sector',
+    assignedAgent: 'Agent Alpha',
+    priority: 'high',
+    estimatedTime: '18 min',
+  },
+  {
+    id: 'task-003',
+    description: 'Create product comparison spreadsheet',
+    assignedAgent: 'Agent Gamma',
+    priority: 'medium',
+    estimatedTime: '25 min',
+  },
+  {
+    id: 'task-004',
+    description: 'Email outreach to 50 prospects',
+    assignedAgent: 'Unassigned',
+    priority: 'medium',
+    estimatedTime: '8 min',
+  },
+  {
+    id: 'task-005',
+    description: 'Review and optimize cost structure',
+    assignedAgent: 'Agent Zeta',
+    priority: 'low',
+    estimatedTime: '15 min',
+  },
+];
+
 const PLAN_STAGES: PlanStage[] = [
   { name: 'Analyzing', completed: true },
   { name: 'Researching', completed: true },
@@ -49,107 +153,22 @@ const PLAN_STAGES: PlanStage[] = [
   { name: 'Ready', completed: false },
 ];
 
+const AGENT_REVENUE = [
+  { name: 'Agent Alpha', tasks: 47, revenue: '$2,350', efficiency: 94 },
+  { name: 'Agent Beta', tasks: 31, revenue: '$1,860', efficiency: 88 },
+  { name: 'Agent Gamma', tasks: 22, revenue: '$1,540', efficiency: 92 },
+  { name: 'Agent Delta', tasks: 56, revenue: '$3,920', efficiency: 96 },
+  { name: 'Agent Epsilon', tasks: 18, revenue: '$980', efficiency: 85 },
+  { name: 'Agent Zeta', tasks: 12, revenue: '$1,680', efficiency: 91 },
+];
+
 // Component
 const AgentOrchestrator: React.FC = () => {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [queueTasks, setQueueTasks] = useState<Task[]>([]);
-  const [agentRevenue, setAgentRevenue] = useState<Array<{ name: string; tasks: number; revenue: number; efficiency: number }>>([]);
-  const [loading, setLoading] = useState(true);
   const [ultraPlanActive, setUltraPlanActive] = useState(false);
   const [planTime, setPlanTime] = useState(0);
-  const [dreamModeActive, setDreamModeActive] = useState(false);
-  const [autoDispatchActive, setAutoDispatchActive] = useState(false);
+  const [dreamModeActive, setDreamModeActive] = useState(true);
+  const [autoDispatchActive, setAutoDispatchActive] = useState(true);
   const [currentPlanIndex, setCurrentPlanIndex] = useState(0);
-
-  // Load data from Supabase
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch jobs (agents)
-        const { data: jobs, error: jobsError } = await db.jobs().select('*');
-        if (jobsError) throw jobsError;
-
-        // Fetch tasks
-        const { data: tasks, error: tasksError } = await db.tasks().select('*');
-        if (tasksError) throw tasksError;
-
-        // Fetch income entries for revenue calculation
-        const { data: incomeEntries, error: incomeError } = await supabase
-          .from('income_entries')
-          .select('*');
-        if (incomeError) throw incomeError;
-
-        // Transform jobs to agents
-        const agentsList: Agent[] = (jobs || []).map((job: any) => ({
-          id: job.id,
-          name: job.name,
-          role: job.category || 'Operations',
-          status: job.status === 'active' ? 'active' : job.status === 'paused' ? 'paused' : 'idle',
-          tasksCompleted: tasks?.filter((t: any) => t.job_id === job.id && t.status === 'done')?.length || 0,
-          currentTask: tasks?.find((t: any) => t.job_id === job.id && t.status === 'in_progress')?.title || 'Waiting for task assignment',
-          cpuUsage: Math.floor(Math.random() * 100),
-          memoryUsage: Math.floor(Math.random() * 100),
-        }));
-
-        // Transform tasks to queue
-        const tasksList: Task[] = (tasks || [])
-          .filter((t: any) => t.status === 'pending')
-          .map((t: any) => ({
-            id: t.id,
-            description: t.title,
-            assignedAgent: t.assigned_to || 'Unassigned',
-            priority: (t.priority as any) === 'critical' ? 'high' : (t.priority as any) === 'low' ? 'low' : 'medium',
-            estimatedTime: t.estimated_minutes ? `${t.estimated_minutes} min` : '10 min',
-          }));
-
-        // Calculate agent revenue from income entries
-        const revenueMap = new Map<string, { tasks: number; revenue: number }>();
-        (incomeEntries || []).forEach((entry: any) => {
-          const key = entry.job_id;
-          if (!revenueMap.has(key)) {
-            revenueMap.set(key, { tasks: 0, revenue: 0 });
-          }
-          const current = revenueMap.get(key)!;
-          current.revenue += entry.amount_usd;
-          current.tasks += 1;
-        });
-
-        const revenueList = agentsList.map((agent) => {
-          const data = revenueMap.get(agent.id) || { tasks: agent.tasksCompleted, revenue: 0 };
-          return {
-            name: agent.name,
-            tasks: data.tasks || agent.tasksCompleted,
-            revenue: data.revenue,
-            efficiency: agent.tasksCompleted > 0 ? Math.min(85 + Math.random() * 15, 100) : 0,
-          };
-        });
-
-        setAgents(agentsList);
-        setQueueTasks(tasksList);
-        setAgentRevenue(revenueList);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error loading agent data:', error);
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Handle UltraPlan: Create plan by inserting tasks
-  const handleUltraPlan = async () => {
-    if (ultraPlanActive) {
-      setUltraPlanActive(false);
-      return;
-    }
-
-    setUltraPlanActive(true);
-    setPlanTime(0);
-    setCurrentPlanIndex(0);
-  };
 
   // UltraPlan timer effect
   useEffect(() => {
@@ -159,66 +178,14 @@ const AgentOrchestrator: React.FC = () => {
       return;
     }
 
-    const createPlanTasks = async () => {
-      try {
-        const activeAgents = agents.filter((a) => a.status === 'active');
-        for (const agent of activeAgents) {
-          await db.tasks().insert({
-            job_id: agent.id,
-            title: `Auto-generated plan task for ${agent.name}`,
-            priority: 'medium',
-            status: 'pending',
-            estimated_minutes: Math.floor(Math.random() * 30) + 10,
-          });
-        }
-      } catch (error) {
-        console.error('Error creating plan tasks:', error);
-      }
-    };
-
     const interval = setInterval(() => {
       setPlanTime((prev) => prev + 1);
-      setCurrentPlanIndex((prev) => {
-        const newIdx = Math.min(prev + 1, PLAN_STAGES.length - 1);
-        if (newIdx === PLAN_STAGES.length - 1) {
-          createPlanTasks();
-        }
-        return newIdx;
-      });
+      // Advance plan stages every 3 seconds
+      setCurrentPlanIndex((prev) => Math.min(prev + 1, PLAN_STAGES.length - 1));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [ultraPlanActive, agents]);
-
-  // Handle Dream Mode: Set all agents to autonomous
-  const handleDreamMode = async (enabled: boolean) => {
-    if (!enabled) {
-      setDreamModeActive(false);
-      return;
-    }
-
-    try {
-      setDreamModeActive(true);
-      // In a real implementation, would update auto_mode field if it exists
-    } catch (error) {
-      console.error('Error enabling dream mode:', error);
-    }
-  };
-
-  // Handle Auto-Dispatch: Execute pending tasks
-  const handleAutoDispatch = async (enabled: boolean) => {
-    if (!enabled) {
-      setAutoDispatchActive(false);
-      return;
-    }
-
-    try {
-      await db.tasks().update({ status: 'in_progress' }).eq('status', 'pending');
-      setAutoDispatchActive(true);
-    } catch (error) {
-      console.error('Error with auto dispatch:', error);
-    }
-  };
+  }, [ultraPlanActive]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -252,18 +219,13 @@ const AgentOrchestrator: React.FC = () => {
     }
   };
 
-  const tasksInQueue = queueTasks.length;
-  const tasksInProgress = agents.filter((a) => a.status === 'active').length;
-  const tasksCompletedToday = agents.reduce((sum, a) => sum + a.tasksCompleted, 0);
-  const totalRevenue = agentRevenue.reduce((sum, a) => sum + a.revenue, 0);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-lumina-bg flex items-center justify-center">
-        <Loader className="w-8 h-8 text-lumina-pulse animate-spin" />
-      </div>
-    );
-  }
+  const tasksInQueue = QUEUE_TASKS.length;
+  const tasksInProgress = AGENTS.filter((a) => a.status === 'active').length;
+  const tasksCompletedToday = AGENTS.reduce((sum, a) => sum + a.tasksCompleted, 0);
+  const totalRevenue = AGENT_REVENUE.reduce(
+    (sum, a) => sum + parseInt(a.revenue.replace('$', '').replace(',', '')),
+    0
+  );
 
   return (
     <div className="min-h-screen bg-lumina-bg p-6 space-y-6">
@@ -286,37 +248,45 @@ const AgentOrchestrator: React.FC = () => {
       <div>
         <h2 className="text-2xl font-bold text-lumina-text mb-4 flex items-center gap-2">
           <Cpu className="w-6 h-6 text-lumina-pulse" />
-          Agent Fleet ({agents.length} Total)
+          Agent Fleet (6 Active)
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {agents.map((agent) => (
+          {AGENTS.map((agent) => (
             <div
               key={agent.id}
               className="bg-lumina-card border border-lumina-border rounded-lg p-4 hover:border-lumina-pulse/50 transition-colors"
             >
+              {/* Header */}
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="text-lg font-semibold text-lumina-text">{agent.name}</h3>
                   <p className="text-sm text-lumina-muted">{agent.role}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className={clsx('w-3 h-3 rounded-full', getStatusColor(agent.status))} />
-                  <span className="text-xs font-medium text-lumina-dim uppercase">{agent.status}</span>
+                  <div
+                    className={clsx('w-3 h-3 rounded-full', getStatusColor(agent.status))}
+                  />
+                  <span className="text-xs font-medium text-lumina-dim uppercase">
+                    {agent.status}
+                  </span>
                 </div>
               </div>
 
+              {/* Tasks Count */}
               <div className="mb-3 p-2 bg-lumina-bg rounded border border-lumina-border">
                 <div className="text-2xl font-bold text-lumina-pulse">{agent.tasksCompleted}</div>
                 <p className="text-xs text-lumina-muted">Tasks Completed</p>
               </div>
 
+              {/* Current Task */}
               <p className="text-sm text-lumina-text mb-3 line-clamp-2">{agent.currentTask}</p>
 
+              {/* Resource Usage */}
               <div className="space-y-2">
                 <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-xs text-lumina-muted">CPU</span>
-                    <span className="text-xs text-lumina-text font-medium">{Math.round(agent.cpuUsage)}%</span>
+                    <span className="text-xs text-lumina-text font-medium">{agent.cpuUsage}%</span>
                   </div>
                   <div className="w-full h-2 bg-lumina-bg rounded-full overflow-hidden">
                     <div
@@ -328,7 +298,7 @@ const AgentOrchestrator: React.FC = () => {
                 <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-xs text-lumina-muted">Memory</span>
-                    <span className="text-xs text-lumina-text font-medium">{Math.round(agent.memoryUsage)}%</span>
+                    <span className="text-xs text-lumina-text font-medium">{agent.memoryUsage}%</span>
                   </div>
                   <div className="w-full h-2 bg-lumina-bg rounded-full overflow-hidden">
                     <div
@@ -351,7 +321,7 @@ const AgentOrchestrator: React.FC = () => {
         </h2>
 
         <button
-          onClick={handleUltraPlan}
+          onClick={() => setUltraPlanActive(!ultraPlanActive)}
           className={clsx(
             'flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all mb-6',
             ultraPlanActive
@@ -369,6 +339,7 @@ const AgentOrchestrator: React.FC = () => {
 
         {ultraPlanActive && (
           <div className="space-y-6">
+            {/* Thinking Timer */}
             <div className="bg-lumina-bg rounded-lg p-4 border border-lumina-border">
               <div className="flex items-center justify-center gap-3">
                 <Loader className="w-6 h-6 text-lumina-violet animate-spin" />
@@ -379,6 +350,7 @@ const AgentOrchestrator: React.FC = () => {
               </div>
             </div>
 
+            {/* Progress Stages */}
             <div className="space-y-2">
               <p className="text-sm text-lumina-muted font-medium">Planning Progress</p>
               <div className="grid grid-cols-5 gap-2">
@@ -400,12 +372,14 @@ const AgentOrchestrator: React.FC = () => {
               </div>
             </div>
 
+            {/* Animated Thinking Dots */}
             <div className="flex justify-center gap-2">
               <div className="w-3 h-3 bg-lumina-pulse rounded-full animate-bounce" />
               <div className="w-3 h-3 bg-lumina-pulse rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
               <div className="w-3 h-3 bg-lumina-pulse rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
             </div>
 
+            {/* Plan Output */}
             {currentPlanIndex >= 4 && (
               <div className="bg-lumina-bg rounded-lg p-4 border border-lumina-pulse/30">
                 <h3 className="text-lg font-bold text-lumina-text mb-4 flex items-center gap-2">
@@ -418,7 +392,7 @@ const AgentOrchestrator: React.FC = () => {
                     <div>
                       <p className="text-lumina-text font-medium">Phase 1: Parallel Task Dispatch</p>
                       <p className="text-sm text-lumina-muted">
-                        Distribute {queueTasks.length} queued tasks across {agents.length} agents
+                        Distribute 12 queued tasks across 4 idle agents for maximum throughput
                       </p>
                     </div>
                   </div>
@@ -427,7 +401,7 @@ const AgentOrchestrator: React.FC = () => {
                     <div>
                       <p className="text-lumina-text font-medium">Phase 2: Resource Optimization</p>
                       <p className="text-sm text-lumina-muted">
-                        Rebalance resource allocation for maximum throughput
+                        Rebalance CPU allocation to reduce Agent Delta load from 88% to 65%
                       </p>
                     </div>
                   </div>
@@ -436,7 +410,7 @@ const AgentOrchestrator: React.FC = () => {
                     <div>
                       <p className="text-lumina-text font-medium">Phase 3: Priority Reordering</p>
                       <p className="text-sm text-lumina-muted">
-                        Move high-revenue tasks forward for maximum ROI
+                        Move high-revenue tasks forward; 8% efficiency gain projected
                       </p>
                     </div>
                   </div>
@@ -452,13 +426,13 @@ const AgentOrchestrator: React.FC = () => {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-lumina-text flex items-center gap-2">
             <Moon className="w-6 h-6 text-lumina-gold" />
-            Dream Mode (Autonomous)
+            Dream Mode (Overnight Knowledge Compression)
           </h2>
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
               checked={dreamModeActive}
-              onChange={(e) => handleDreamMode(e.target.checked)}
+              onChange={(e) => setDreamModeActive(e.target.checked)}
               className="w-5 h-5"
             />
             <span className="text-lumina-muted">Enable</span>
@@ -467,38 +441,59 @@ const AgentOrchestrator: React.FC = () => {
 
         {dreamModeActive && (
           <div className="space-y-4">
+            {/* Status */}
             <div className="bg-lumina-bg rounded-lg p-4 flex items-center gap-3 border border-lumina-gold/30">
               <Loader className="w-5 h-5 text-lumina-gold animate-spin" />
               <p className="text-lumina-text font-medium">
-                All {agents.filter((a) => a.status === 'active').length} agents running in autonomous mode
+                Processing overnight knowledge compression...
               </p>
             </div>
 
+            {/* Stats Grid */}
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-lumina-bg rounded-lg p-4 border border-lumina-border">
-                <p className="text-2xl font-bold text-lumina-pulse">{agents.length}</p>
-                <p className="text-sm text-lumina-muted mt-1">Active Agents</p>
+                <p className="text-2xl font-bold text-lumina-pulse">2,847</p>
+                <p className="text-sm text-lumina-muted mt-1">Knowledge Nodes Processed</p>
               </div>
               <div className="bg-lumina-bg rounded-lg p-4 border border-lumina-border">
-                <p className="text-2xl font-bold text-lumina-success">{queueTasks.length}</p>
-                <p className="text-sm text-lumina-muted mt-1">Queued Tasks</p>
+                <p className="text-2xl font-bold text-lumina-success">143</p>
+                <p className="text-sm text-lumina-muted mt-1">Patterns Identified</p>
               </div>
               <div className="bg-lumina-bg rounded-lg p-4 border border-lumina-border">
-                <p className="text-2xl font-bold text-lumina-gold">{tasksInProgress}</p>
-                <p className="text-sm text-lumina-muted mt-1">In Progress</p>
+                <p className="text-2xl font-bold text-lumina-gold">28</p>
+                <p className="text-sm text-lumina-muted mt-1">Optimizations Found</p>
               </div>
+            </div>
+
+            {/* Last Dream Cycle Results */}
+            <div className="bg-lumina-bg rounded-lg p-4 border border-lumina-border space-y-2">
+              <p className="text-sm font-semibold text-lumina-muted uppercase">Last Dream Cycle</p>
+              <ul className="space-y-2">
+                <li className="flex items-start gap-2 text-lumina-text">
+                  <CheckCircle2 className="w-4 h-4 text-lumina-success flex-shrink-0 mt-0.5" />
+                  <span>Identified 3 new synergies between agent workflows</span>
+                </li>
+                <li className="flex items-start gap-2 text-lumina-text">
+                  <CheckCircle2 className="w-4 h-4 text-lumina-success flex-shrink-0 mt-0.5" />
+                  <span>Compressed 2.4GB of market research data with 98% fidelity</span>
+                </li>
+                <li className="flex items-start gap-2 text-lumina-text">
+                  <CheckCircle2 className="w-4 h-4 text-lumina-success flex-shrink-0 mt-0.5" />
+                  <span>Generated 12 new high-confidence trading signals</span>
+                </li>
+              </ul>
             </div>
           </div>
         )}
 
         {!dreamModeActive && (
           <div className="bg-lumina-bg rounded-lg p-6 text-center border border-lumina-border/50">
-            <p className="text-lumina-muted">Enable Dream Mode to activate autonomous operations</p>
+            <p className="text-lumina-muted">Enable Dream Mode to activate overnight knowledge compression</p>
           </div>
         )}
       </div>
 
-      {/* Task Queue & Dispatch */}
+      {/* Task Queue / Dispatch */}
       <div className="bg-lumina-card border border-lumina-border rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold text-lumina-text flex items-center gap-2">
@@ -509,13 +504,14 @@ const AgentOrchestrator: React.FC = () => {
             <input
               type="checkbox"
               checked={autoDispatchActive}
-              onChange={(e) => handleAutoDispatch(e.target.checked)}
+              onChange={(e) => setAutoDispatchActive(e.target.checked)}
               className="w-5 h-5"
             />
             <span className="text-lumina-muted text-sm">Auto-Dispatch</span>
           </label>
         </div>
 
+        {/* Queue Stats */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-lumina-bg rounded-lg p-4 border border-lumina-border">
             <p className="text-2xl font-bold text-lumina-pulse">{tasksInQueue}</p>
@@ -531,8 +527,9 @@ const AgentOrchestrator: React.FC = () => {
           </div>
         </div>
 
+        {/* Queue Table */}
         <div className="space-y-2">
-          {queueTasks.map((task) => (
+          {QUEUE_TASKS.map((task) => (
             <div
               key={task.id}
               className="flex items-center justify-between bg-lumina-bg border border-lumina-border rounded-lg p-4 hover:border-lumina-pulse/50 transition-colors"
@@ -554,11 +551,6 @@ const AgentOrchestrator: React.FC = () => {
               </div>
             </div>
           ))}
-          {queueTasks.length === 0 && (
-            <div className="text-center py-6 text-lumina-muted">
-              No pending tasks
-            </div>
-          )}
         </div>
       </div>
 
@@ -569,6 +561,7 @@ const AgentOrchestrator: React.FC = () => {
           Multi-Agent Performance
         </h2>
 
+        {/* Stats Bar */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-lumina-bg rounded-lg p-4 border border-lumina-border">
             <p className="text-2xl font-bold text-lumina-text">{tasksCompletedToday}</p>
@@ -588,9 +581,10 @@ const AgentOrchestrator: React.FC = () => {
           </div>
         </div>
 
+        {/* Agent Task Completion Chart */}
         <div className="space-y-3">
           <p className="text-sm text-lumina-muted font-medium">Tasks Completed by Agent</p>
-          {agents.map((agent) => (
+          {AGENTS.map((agent) => (
             <div key={agent.id}>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm text-lumina-text font-medium">{agent.name}</span>
@@ -599,7 +593,7 @@ const AgentOrchestrator: React.FC = () => {
               <div className="w-full h-2 bg-lumina-bg rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-lumina-pulse to-lumina-violet rounded-full"
-                  style={{ width: `${Math.min((agent.tasksCompleted / 60) * 100, 100)}%` }}
+                  style={{ width: `${(agent.tasksCompleted / 56) * 100}%` }}
                 />
               </div>
             </div>
@@ -607,13 +601,14 @@ const AgentOrchestrator: React.FC = () => {
         </div>
       </div>
 
-      {/* Agent Revenue Attribution */}
+      {/* Weekly Agent Revenue Attribution */}
       <div className="bg-lumina-card border border-lumina-border rounded-lg p-6">
         <h2 className="text-2xl font-bold text-lumina-text mb-4 flex items-center gap-2">
           <BarChart3 className="w-6 h-6 text-lumina-gold" />
-          Agent Revenue Attribution
+          Weekly Agent Revenue Attribution
         </h2>
 
+        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -625,14 +620,14 @@ const AgentOrchestrator: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {agentRevenue.map((row) => (
+              {AGENT_REVENUE.map((row, idx) => (
                 <tr
                   key={row.name}
                   className="border-b border-lumina-border hover:bg-lumina-bg/50 transition-colors"
                 >
                   <td className="py-3 px-4 text-lumina-text font-medium">{row.name}</td>
                   <td className="py-3 px-4 text-right text-lumina-text">{row.tasks}</td>
-                  <td className="py-3 px-4 text-right text-lumina-pulse font-semibold">${row.revenue.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-right text-lumina-pulse font-semibold">{row.revenue}</td>
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <div className="w-16 h-2 bg-lumina-bg rounded-full overflow-hidden">
@@ -641,25 +636,134 @@ const AgentOrchestrator: React.FC = () => {
                           style={{ width: `${row.efficiency}%` }}
                         />
                       </div>
-                      <span className="text-sm text-lumina-muted w-8 text-right">{Math.round(row.efficiency)}%</span>
+                      <span className="text-sm text-lumina-muted w-8 text-right">{row.efficiency}%</span>
                     </div>
                   </td>
                 </tr>
               ))}
+              {/* Total Row */}
               <tr className="bg-lumina-bg border-t-2 border-lumina-border font-semibold">
                 <td className="py-3 px-4 text-lumina-text">TOTAL</td>
                 <td className="py-3 px-4 text-right text-lumina-text">
-                  {agentRevenue.reduce((sum, r) => sum + r.tasks, 0)}
+                  {AGENT_REVENUE.reduce((sum, r) => sum + r.tasks, 0)}
                 </td>
                 <td className="py-3 px-4 text-right text-lumina-pulse">
-                  ${agentRevenue.reduce((sum, r) => sum + r.revenue, 0).toLocaleString()}
+                  ${AGENT_REVENUE.reduce((sum, r) => sum + parseInt(r.revenue.replace('$', '').replace(',', '')), 0).toLocaleString()}
                 </td>
                 <td className="py-3 px-4 text-right text-lumina-text">
-                  {Math.round(agentRevenue.reduce((sum, r) => sum + r.efficiency, 0) / Math.max(agentRevenue.length, 1))}%
+                  {Math.round(AGENT_REVENUE.reduce((sum, r) => sum + r.efficiency, 0) / AGENT_REVENUE.length)}%
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* ââ Reseller Access & Agent Licenses ââââââââââââââââââââââââââââââââââââ */}
+      <div className="bg-lumina-card border border-lumina-pulse/30 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-lumina-text flex items-center gap-2">
+            <Users className="w-6 h-6 text-lumina-pulse" />
+            Reseller Access & Agent Licenses
+          </h2>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-lumina-success/20 text-lumina-success border border-lumina-success/30">
+            <span className="w-2 h-2 rounded-full bg-lumina-success animate-pulse" />
+            LIVE â Stripe Connected
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          {/* Agent Wholesale License */}
+          <div className="bg-lumina-bg rounded-xl p-5 border border-lumina-border hover:border-lumina-pulse/40 transition-all">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-5 h-5 text-lumina-pulse" />
+              <h3 className="text-lg font-bold text-lumina-text">Agent Wholesale License</h3>
+            </div>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-3xl font-bold text-lumina-gold">$49 â $99</span>
+              <span className="text-sm text-lumina-muted">one-time</span>
+            </div>
+            <p className="text-sm text-lumina-muted mb-4">
+              Bulk access â agents get their own sub-account, run jobs, and collect payouts via Stripe.
+            </p>
+            <ul className="space-y-2 mb-5">
+              <li className="flex items-center gap-2 text-sm text-lumina-text">
+                <CheckCircle2 className="w-4 h-4 text-lumina-success flex-shrink-0" />
+                Own sub-account dashboard
+              </li>
+              <li className="flex items-center gap-2 text-sm text-lumina-text">
+                <CheckCircle2 className="w-4 h-4 text-lumina-success flex-shrink-0" />
+                Run all 6 agents independently
+              </li>
+              <li className="flex items-center gap-2 text-sm text-lumina-text">
+                <CheckCircle2 className="w-4 h-4 text-lumina-success flex-shrink-0" />
+                White-label client reports
+              </li>
+              <li className="flex items-center gap-2 text-sm text-lumina-text">
+                <CheckCircle2 className="w-4 h-4 text-lumina-success flex-shrink-0" />
+                Stripe auto-payouts enabled
+              </li>
+            </ul>
+            <button
+              onClick={() => window.open('https://buy.stripe.com/test_wholesale_agent', '_blank')}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold text-sm bg-lumina-pulse text-lumina-bg hover:bg-lumina-pulse/90 transition-all"
+            >
+              <CreditCard className="w-4 h-4" />
+              Buy License via Stripe
+            </button>
+          </div>
+
+          {/* Monthly Reseller Pass */}
+          <div className="bg-lumina-bg rounded-xl p-5 border border-lumina-gold/30 hover:border-lumina-gold/50 transition-all relative overflow-hidden">
+            <div className="absolute top-3 right-3 px-2 py-1 bg-lumina-gold/20 rounded text-[10px] font-bold text-lumina-gold uppercase tracking-wider">Best Value</div>
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-5 h-5 text-lumina-gold" />
+              <h3 className="text-lg font-bold text-lumina-text">Monthly Reseller Pass</h3>
+            </div>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-3xl font-bold text-lumina-gold">$197</span>
+              <span className="text-sm text-lumina-muted">/month</span>
+            </div>
+            <p className="text-sm text-lumina-muted mb-4">
+              Full access â agents can run and price ALL jobs themselves with unlimited sub-accounts.
+            </p>
+            <ul className="space-y-2 mb-5">
+              <li className="flex items-center gap-2 text-sm text-lumina-text">
+                <CheckCircle2 className="w-4 h-4 text-lumina-gold flex-shrink-0" />
+                Full Agent Fleet access (all 6 agents)
+              </li>
+              <li className="flex items-center gap-2 text-sm text-lumina-text">
+                <CheckCircle2 className="w-4 h-4 text-lumina-gold flex-shrink-0" />
+                Set your own pricing on every job
+              </li>
+              <li className="flex items-center gap-2 text-sm text-lumina-text">
+                <CheckCircle2 className="w-4 h-4 text-lumina-gold flex-shrink-0" />
+                Unlimited client sub-accounts
+              </li>
+              <li className="flex items-center gap-2 text-sm text-lumina-text">
+                <CheckCircle2 className="w-4 h-4 text-lumina-gold flex-shrink-0" />
+                Priority queue + Dream Mode + UltraPlan
+              </li>
+              <li className="flex items-center gap-2 text-sm text-lumina-text">
+                <CheckCircle2 className="w-4 h-4 text-lumina-gold flex-shrink-0" />
+                Revenue dashboard + auto cash-out
+              </li>
+            </ul>
+            <button
+              onClick={() => window.open('https://buy.stripe.com/test_reseller_pass', '_blank')}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold text-sm bg-lumina-gold text-lumina-bg hover:bg-lumina-gold/90 transition-all"
+            >
+              <CreditCard className="w-4 h-4" />
+              Subscribe via Stripe â $197/mo
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-lumina-bg/60 rounded-lg p-4 border border-lumina-border text-center">
+          <p className="text-xs text-lumina-dim">
+            All payments handled by Stripe. Agents log in, buy licenses, price jobs, and sell while everything runs automatically.
+            You only see Money Flow / Cash Out History.
+          </p>
         </div>
       </div>
     </div>
