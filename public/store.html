@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Lumina Ops Hub Digital Products Store - AI tools, trading bots, templates, and more at competitive prices.">
+    <meta name="keywords" content="digital products, trading tools, AI, templates, calculators, scanners">
+    <meta name="author" content="Lumina Ops Hub">
+    <meta property="og:title" content="Lumina Ops Hub - Digital Products Store">
+    <meta property="og:description" content="Premium digital products for traders, creators, and entrepreneurs.">
+    <meta property="og:type" content="website">
+    <title>Lumina Ops Hub - Digital Products Store</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #00d4ff;
+            --secondary: #7c3aed;
+            --dark-bg: #0f0f1e;
+            --darker-bg: #0a0b14;
+            --card-bg: #1a1a2e;
+            --text-light: #e0e0e0;
+            --text-muted: #a0a0a0;
+            --accent: #ffd700;
+            --success: #00d97e;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--dark-bg) 0%, var(--darker-bg) 100%);
+            color: var(--text-light);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(15, 15, 30, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        nav a {
+            color: var(--text-light);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        nav a:hover {
+            color: var(--primary);
+        }
+
+        /* Hero Section */
+        .hero {
+            margin-top: 80px;
+            min-height: 60vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4rem 2rem;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.08) 0%, rgba(124, 58, 237, 0.08) 100%);
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(0, 212, 255, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(30px); }
+        }
+
+        .hero-content {
+            max-width: 900px;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero h1 {
+            font-size: clamp(2rem, 6vw, 3.5rem);
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        /* Store Section */
+        .store {
+            padding: 4rem 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 3rem;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .product-card {
+            background: rgba(26, 26, 46, 0.6);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 20px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 400px;
+        }
+
+        .product-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .product-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-10px);
+            box-shadow: 0 20px 50px rgba(0, 212, 255, 0.2);
+        }
+
+        .product-card:hover::before {
+            opacity: 1;
+        }
+
+        .product-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .product-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .product-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 0.8rem;
+            color: var(--text-light);
+            line-height: 1.3;
+        }
+
+        .product-card p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 1.5rem;
+            flex-grow: 1;
+            line-height: 1.6;
+        }
+
+        .product-features {
+            list-style: none;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+        }
+
+        .product-features li {
+            padding: 0.4rem 0;
+            color: var(--text-muted);
+        }
+
+        .product-features li::before {
+            content: 'â ';
+            color: var(--success);
+            font-weight: 700;
+            margin-right: 0.5rem;
+        }
+
+        .product-price {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .price-amount {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--accent);
+        }
+
+        .price-currency {
+            font-size: 1rem;
+            color: var(--text-muted);
+        }
+
+        .buy-button {
+            width: 100%;
+            padding: 0.875rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            z-index: 2;
+        }
+
+        .buy-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 212, 255, 0.3);
+        }
+
+        .buy-button:active {
+            transform: translateY(0);
+        }
+
+        .buy-button[disabled] {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Info Section */
+        .info-section {
+            padding: 4rem 2rem;
+            background: rgba(10, 10, 20, 0.5);
+            position: relative;
+            text-align: center;
+        }
+
+        .info-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+        }
+
+        .info-content {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .info-content h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info-content p {
+            color: var(--text-muted);
+            font-size: 1rem;
+            line-height: 1.8;
+            margin-bottom: 1rem;
+        }
+
+        /* Footer */
+        footer {
+            background: rgba(10, 10, 20, 0.8);
+            border-top: 1px solid rgba(0, 212, 255, 0.1);
+            padding: 3rem 2rem 1.5rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .footer-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .footer-links a:hover {
+            color: var(--primary);
+        }
+
+        .footer-bottom {
+            border-top: 1px solid rgba(0, 212, 255, 0.1);
+            padding-top: 1.5rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .footer-credit {
+            margin-top: 0.5rem;
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            nav {
+                padding: 0.8rem 1.5rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+
+            .hero {
+                min-height: 50vh;
+                margin-top: 60px;
+                padding: 2rem 1rem;
+            }
+
+            .hero h1 {
+                font-size: 1.8rem;
+            }
+
+            .hero p {
+                font-size: 1rem;
+            }
+
+            .section-title {
+                font-size: 2rem;
+                margin-bottom: 2rem;
+            }
+
+            .products-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .store {
+                padding: 2rem 1rem;
+            }
+
+            .footer-links {
+                gap: 1rem;
+                flex-direction: column;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero {
+                padding: 1.5rem;
+                min-height: 40vh;
+            }
+
+            .product-card {
+                padding: 1.5rem;
+                min-height: 350px;
+            }
+
+            .product-icon {
+                font-size: 2.5rem;
+            }
+
+            .product-card h3 {
+                font-size: 1.1rem;
+            }
+
+            .info-section {
+                padding: 2rem 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="logo">Lumina Ops Hub</div>
+        <a href="/agency.html" style="color: var(--text-light); text-decoration: none;">â Back to Agency</a>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Digital Products Store</h1>
+            <p>Premium tools and resources for traders, creators, and entrepreneurs. Instant access after purchase.</p>
+        </div>
+    </section>
+
+    <!-- Products Section -->
+    <section class="store" id="products">
+        <h2 class="section-title">Available Products</h2>
+        <div class="products-grid">
+            <!-- Product 1 -->
+            <div class="product-card">
+                <div class="product-content">
+                    <div class="product-icon">ð¤</div>
+                    <h3>MT5 Gold Scalper EA</h3>
+                    <p>Advanced automated trading bot optimized for gold pairs. Perfect for scalpers seeking consistent micro-profits with risk management.</p>
+                    <ul class="product-features">
+                        <li>Live trading support</li>
+                        <li>24/7 operation</li>
+                        <li>Risk management built-in</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="product-price">
+                        <span class="price-currency">$</span>
+                        <span class="price-amount">97</span>
+                    </div>
+                    <button class="buy-button" data-product-id="mt5-gold-scalper" data-product-name="MT5 Gold Scalper EA" data-product-price="97">Buy Now</button>
+                </div>
+            </div>
+
+            <!-- Product 2 -->
+            <div class="product-card">
+                <div class="product-content">
+                    <div class="product-icon">ð</div>
+                    <h3>Polymarket Edge Scanner</h3>
+                    <p>Real-time prediction market analyzer identifying edges and probability-weighted opportunities. Gain competitive advantage instantly.</p>
+                    <ul class="product-features">
+                        <li>Real-time data feeds</li>
+                        <li>Edge detection algorithm</li>
+                        <li>API integration ready</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="product-price">
+                        <span class="price-currency">$</span>
+                        <span class="price-amount">47</span>
+                    </div>
+                    <button class="buy-button" data-product-id="polymarket-scanner" data-product-name="Polymarket Edge Scanner" data-product-price="47">Buy Now</button>
+                </div>
+            </div>
+
+            <!-- Product 3 -->
+            <div class="product-card">
+                <div class="product-content">
+                    <div class="product-icon">â¨</div>
+                    <h3>AI Prompt Engineering Toolkit</h3>
+                    <p>Complete collection of optimized prompts for ChatGPT, Claude, and other LLMs. Generate better content 10x faster.</p>
+                    <ul class="product-features">
+                        <li>100+ tested prompts</li>
+                        <li>Regular updates</li>
+                        <li>Private community access</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="product-price">
+                        <span class="price-currency">$</span>
+                        <span class="price-amount">29</span>
+                    </div>
+                    <button class="buy-button" data-product-id="prompt-toolkit" data-product-name="AI Prompt Engineering Toolkit" data-product-price="29">Buy Now</button>
+                </div>
+            </div>
+
+            <!-- Product 4 -->
+            <div class="product-card">
+                <div class="product-content">
+                    <div class="product-icon">ð</div>
+                    <h3>Content Swarm Templates</h3>
+                    <p>Ready-to-use templates for email sequences, social media, landing pages, and sales funnels. Launch campaigns in minutes.</p>
+                    <ul class="product-features">
+                        <li>50+ templates</li>
+                        <li>Fully customizable</li>
+                        <li>Industry-specific sets</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="product-price">
+                        <span class="price-currency">$</span>
+                        <span class="price-amount">19</span>
+                    </div>
+                    <button class="buy-button" data-product-id="content-templates" data-product-name="Content Swarm Templates" data-product-price="19">Buy Now</button>
+                </div>
+            </div>
+
+            <!-- Product 5 -->
+            <div class="product-card">
+                <div class="product-content">
+                    <div class="product-icon">ð</div>
+                    <h3>Kelly Calculator Pro</h3>
+                    <p>Advanced position sizing tool using Kelly Criterion. Optimize your trading risk/reward for maximum long-term growth.</p>
+                    <ul class="product-features">
+                        <li>Multi-asset support</li>
+                        <li>Risk curves visualization</li>
+                        <li>Excel integration</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="product-price">
+                        <span class="price-currency">$</span>
+                        <span class="price-amount">14.99</span>
+                    </div>
+                    <button class="buy-button" data-product-id="kelly-calculator" data-product-name="Kelly Calculator Pro" data-product-price="14.99">Buy Now</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Info Section -->
+    <section class="info-section">
+        <div class="info-content">
+            <h2>Instant Access Guaranteed</h2>
+            <p>All purchases include immediate download links and email delivery. Access your products within seconds of completing your purchase.</p>
+            <p style="margin-top: 2rem; font-size: 0.9rem; color: var(--text-muted);">100% Money-back guarantee if you're not satisfied within 30 days.</p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-links">
+                <a href="/agency.html">Vibe-Code Agency</a>
+                <a href="#">Privacy Policy</a>
+                <a href="#">Terms of Service</a>
+                <a href="mailto:wealthdh@gmail.com">Contact Us</a>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Lumina Ops Hub. All rights reserved.</p>
+                <p class="footer-credit">Premium Digital Products for Traders & Creators</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Fetch product payment links from API and update buy buttons
+        async function loadPaymentLinks() {
+            try {
+                const response = await fetch('/api/products');
+                if (!response.ok) {
+                    console.log('API not available yet. Using placeholder payment links.');
+                    return;
+                }
+                const products = await response.json();
+
+                // Map products to buttons and update href
+                products.forEach(product => {
+                    const button = document.querySelector(`[data-product-id="${product.id}"]`);
+                    if (button && product.stripe_link) {
+                        button.href = product.stripe_link;
+                        button.tagName === 'BUTTON' && (button.onclick = () => window.location.href = product.stripe_link);
+                    }
+                });
+            } catch (error) {
+                console.log('Could not load payment links:', error);
+            }
+        }
+
+        // Handle buy button clicks
+        document.querySelectorAll('.buy-button').forEach(button => {
+            button.addEventListener('click', function() {
+                const productId = this.dataset.productId;
+                const productName = this.dataset.productName;
+                const productPrice = this.dataset.productPrice;
+
+                // TODO: Replace with actual Stripe payment link from API
+                // For now, this is a placeholder that should be populated by loadPaymentLinks()
+                const stripeLink = `#stripe-${productId}`;
+
+                if (stripeLink && stripeLink !== `#stripe-${productId}`) {
+                    window.location.href = stripeLink;
+                } else {
+                    // Fallback: Create a checkout session
+                    console.log(`Checkout: ${productName} - $${productPrice}`);
+                    alert(`Thank you for your interest in ${productName}!\n\nPayment processing coming soon.\n\nPrice: $${productPrice}`);
+                }
+            });
+        });
+
+        // Load payment links when page loads
+        window.addEventListener('load', loadPaymentLinks);
+
+        // Scroll animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.product-card').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(20px)';
+            el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>
