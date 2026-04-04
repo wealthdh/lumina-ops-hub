@@ -6,21 +6,29 @@
  */
 import { useState } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { Video, Zap, Globe, TrendingUp, Play, Plus, Search, BarChart2, RefreshCw, ExternalLink, Trash2 } from 'lucide-react'
+import { Video, Zap, Globe, TrendingUp, Play, Plus, Search, BarChart2, RefreshCw, ExternalLink, Trash2, Loader2, CheckCircle, AlertCircle, Film } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { generateAndSaveCreative, checkKlingApiHealth } from '../lib/ugcApi'
 import clsx from 'clsx'
 
 // âââ Types ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 interface UgcCreative {
-  id:         string
-  title:      string
-  platform:   string
-  status:     'live' | 'testing' | 'draft' | 'paused'
-  views:      number
-  ctr:        number
-  roas:       number
-  tool:       string
-  created_at: string
+  id:                string
+  title:             string
+  platform:          string
+  status:            'live' | 'testing' | 'draft' | 'paused'
+  views:             number
+  ctr:               number
+  roas:              number
+  tool:              string
+  created_at:        string
+  video_url?:        string | null
+  thumbnail_url?:    string | null
+  caption?:          string | null
+  platform_ready?:   boolean
+  distributed_to?:   string[]
+  generation_prompt?: string | null
+  api_provider?:     string | null
 }
 
 interface SeoKeyword {
@@ -70,26 +78,62 @@ function useSeoKeywords() {
   })
 }
 
-// âââ Generate Creative mutation â inserts real row into ugc_creatives âââââââââ
+// âââ Generate Creative mutation â inserts row, then fires Kling API ââââââââââ
 function useGenerateCreative() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (opts: { title: string; platform: string; tool: string }) => {
-      const { data, error } = await supabase
+    mutationFn: async (opts: {
+      title: string
+      platform: string
+      tool: string
+      prompt?: string
+      duration?: '5' | '10'
+      mode?: 'std' | 'pro'
+      aspect_ratio?: '16:9' | '9:16' | '1:1'
+      onProgress?: (status: string) => void
+    }) => {
+      // 1. Insert a draft row immediately so it shows up in the list
+      const { data: creative, error } = await supabase
         .from('ugc_creatives')
         .insert({
-          title:    opts.title,
-          platform: opts.platform,
-          status:   'draft',
-          views:    0,
-          ctr:      0,
-          roas:     0,
-          tool:     opts.tool,
+          title:             opts.title,
+          platform:          opts.platform,
+          status:            'draft',
+          views:             0,
+          ctr:               0,
+          roas:              0,
+          tool:              opts.tool,
+          api_provider:      'kling',
+          generation_prompt: opts.prompt || opts.title,
         })
         .select()
         .single()
       if (error) throw error
-      return data
+
+      // 2. If tool is Kling, fire the real API (non-blocking for the modal close)
+      if (opts.tool === 'Kling') {
+        // Don't await â let it generate in the background
+        generateAndSaveCreative({
+          creativeId: creative.id,
+          prompt: opts.prompt || opts.title,
+          duration: opts.duration || '5',
+          mode: opts.mode || 'std',
+          aspect_ratio: opts.aspect_ratio || '16:9',
+          onProgress: opts.onProgress,
+        }).then(() => {
+          qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
+        }).catch((err) => {
+          console.error('[ContentSwarm] Kling generation failed:', err)
+          // Mark it as failed/paused in DB
+          supabase
+            .from('ugc_creatives')
+            .update({ status: 'paused' })
+            .eq('id', creative.id)
+            .then(() => qc.invalidateQueries({ queryKey: ['ugc_creatives'] }))
+        })
+      }
+
+      return creative
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
@@ -172,14 +216,26 @@ const TARGET_KEYWORDS = [
 // âââ Generate Creative Modal ââââââââââââââââââââââââââââââââââââââââââââââââââ
 function GenerateModal({ onClose, onGenerate, isPending }: {
   onClose: () => void
-  onGenerate: (opts: { title: string; platform: string; tool: string }) => void
+  onGenerate: (opts: {
+    title: string; platform: string; tool: string;
+    prompt?: string; duration?: '5' | '10'; mode?: 'std' | 'pro';
+    aspect_ratio?: '16:9' | '9:16' | '1:1'
+  }) => void
   isPending: boolean
 }) {
   const [selected, setSelected] = useState(0)
   const [customTitle, setCustomTitle] = useState('')
+  const [customPrompt, setCustomPrompt] = useState('')
+  const [duration, setDuration] = useState<'5' | '10'>('5')
+  const [mode, setMode] = useState<'std' | 'pro'>('std')
+  const [aspect, setAspect] = useState<'16:9' | '9:16' | '1:1'>('16:9')
 
   const template = CREATIVE_TEMPLATES[selected]
   const title = customTitle.trim() || template.title
+  const isKling = template.tool === 'Kling'
+
+  // Auto-generate a video prompt from the template title
+  const defaultPrompt = `Create a high-quality ${template.platform} video: ${template.title}. Professional lighting, smooth motion, engaging for social media.`
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -188,7 +244,9 @@ function GenerateModal({ onClose, onGenerate, isPending }: {
         <div className="flex items-center justify-between p-5 border-b border-lumina-border">
           <div>
             <div className="text-lumina-text font-semibold text-sm">Generate New Creative</div>
-            <div className="text-lumina-dim text-xs">Select a template or create custom</div>
+            <div className="text-lumina-dim text-xs">
+              {isKling ? 'â¡ Kling AI â Real video generation' : 'Arcads template â draft only'}
+            </div>
           </div>
           <button onClick={onClose} className="text-lumina-muted hover:text-lumina-text p-1">
             <Zap size={16} />
@@ -203,7 +261,7 @@ function GenerateModal({ onClose, onGenerate, isPending }: {
               {CREATIVE_TEMPLATES.map((t, i) => (
                 <button
                   key={i}
-                  onClick={() => { setSelected(i); setCustomTitle('') }}
+                  onClick={() => { setSelected(i); setCustomTitle(''); setCustomPrompt('') }}
                   className={clsx(
                     'text-left text-xs p-3 rounded-lg border transition-all',
                     selected === i
@@ -212,7 +270,10 @@ function GenerateModal({ onClose, onGenerate, isPending }: {
                   )}
                 >
                   <div className="font-medium">{t.title}</div>
-                  <div className="text-[10px] mt-0.5 opacity-70">{t.platform} Â· {t.tool}</div>
+                  <div className="text-[10px] mt-0.5 opacity-70">
+                    {t.platform} Â· {t.tool}
+                    {t.tool === 'Kling' && ' â¡ Real AI Video'}
+                  </div>
                 </button>
               ))}
             </div>
@@ -221,7 +282,7 @@ function GenerateModal({ onClose, onGenerate, isPending }: {
           {/* Custom title override */}
           <div>
             <label className="text-xs text-lumina-dim font-medium block mb-1.5">
-              Custom Title <span className="text-lumina-muted">(optional â overrides template)</span>
+              Custom Title <span className="text-lumina-muted">(optional)</span>
             </label>
             <input
               type="text"
@@ -232,17 +293,88 @@ function GenerateModal({ onClose, onGenerate, isPending }: {
             />
           </div>
 
+          {/* Kling-specific: video prompt + settings */}
+          {isKling && (
+            <>
+              <div>
+                <label className="text-xs text-lumina-dim font-medium block mb-1.5">
+                  Video Prompt <span className="text-lumina-muted">(sent to Kling AI)</span>
+                </label>
+                <textarea
+                  value={customPrompt}
+                  onChange={e => setCustomPrompt(e.target.value)}
+                  placeholder={defaultPrompt}
+                  rows={3}
+                  className="w-full bg-lumina-bg border border-lumina-border rounded-xl px-3 py-2.5 text-xs text-lumina-text placeholder-lumina-muted focus:outline-none focus:border-lumina-pulse transition-colors resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] text-lumina-dim font-medium block mb-1">Duration</label>
+                  <select
+                    value={duration}
+                    onChange={e => setDuration(e.target.value as '5' | '10')}
+                    className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-2 py-1.5 text-xs text-lumina-text"
+                  >
+                    <option value="5">5 seconds</option>
+                    <option value="10">10 seconds</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-lumina-dim font-medium block mb-1">Quality</label>
+                  <select
+                    value={mode}
+                    onChange={e => setMode(e.target.value as 'std' | 'pro')}
+                    className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-2 py-1.5 text-xs text-lumina-text"
+                  >
+                    <option value="std">Standard</option>
+                    <option value="pro">Pro (slower)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-lumina-dim font-medium block mb-1">Aspect</label>
+                  <select
+                    value={aspect}
+                    onChange={e => setAspect(e.target.value as '16:9' | '9:16' | '1:1')}
+                    className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-2 py-1.5 text-xs text-lumina-text"
+                  >
+                    <option value="16:9">16:9 landscape</option>
+                    <option value="9:16">9:16 portrait</option>
+                    <option value="1:1">1:1 square</option>
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Preview */}
           <div className="bg-lumina-bg/60 rounded-lg p-3 text-xs">
             <div className="text-lumina-muted mb-1">Will create:</div>
             <div className="text-lumina-text font-medium">{title}</div>
-            <div className="text-lumina-dim mt-0.5">{template.platform} Â· {template.tool} Â· Status: draft</div>
+            <div className="text-lumina-dim mt-0.5">
+              {template.platform} Â· {template.tool} Â· Status: draft
+              {isKling && ` Â· ${duration}s Â· ${mode} Â· ${aspect}`}
+            </div>
+            {isKling && (
+              <div className="mt-2 text-lumina-pulse text-[10px]">
+                â¡ Will send to Kling AI for real video generation (~1-3 min)
+              </div>
+            )}
           </div>
         </div>
 
         <div className="p-5 border-t border-lumina-border">
           <button
-            onClick={() => onGenerate({ title, platform: template.platform, tool: template.tool })}
+            onClick={() => onGenerate({
+              title,
+              platform: template.platform,
+              tool: template.tool,
+              prompt: customPrompt.trim() || defaultPrompt,
+              duration,
+              mode,
+              aspect_ratio: aspect,
+            })}
             disabled={isPending}
             className={clsx(
               'btn-pulse w-full flex items-center justify-center gap-2 py-2.5',
@@ -250,7 +382,7 @@ function GenerateModal({ onClose, onGenerate, isPending }: {
             )}
           >
             <Zap size={13} className={isPending ? 'animate-spin' : ''} />
-            {isPending ? 'Creating Creative...' : 'Generate Creative'}
+            {isPending ? 'Creating Creative...' : isKling ? 'â¡ Generate with Kling AI' : 'Generate Creative'}
           </button>
         </div>
       </div>
@@ -268,6 +400,8 @@ export default function ContentSwarm() {
   const [showGenerateModal, setShowGenerateModal] = useState(false)
 
   const liveCreatives = creatives.filter((c) => c.status === 'live')
+  const videosReady = creatives.filter((c) => c.video_url).length
+  const videosGenerating = creatives.filter((c) => c.api_provider === 'kling' && !c.video_url && c.status === 'testing').length
   const totalViews = creatives.reduce((s, c) => s + (c.views ?? 0), 0)
   const roasItems  = creatives.filter((c) => (c.roas ?? 0) > 0)
   const avgRoas    = roasItems.length
@@ -295,7 +429,7 @@ export default function ContentSwarm() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="card-glow text-center">
           <div className="stat-label">Total Views</div>
           <div className="stat-value text-lumina-pulse">
@@ -311,6 +445,15 @@ export default function ContentSwarm() {
         <div className="card-glow text-center">
           <div className="stat-label">Live Creatives</div>
           <div className="stat-value text-lumina-success">{liveCreatives.length}</div>
+        </div>
+        <div className="card-glow text-center">
+          <div className="stat-label">AI Videos</div>
+          <div className="stat-value text-lumina-pulse">
+            {videosReady}
+            {videosGenerating > 0 && (
+              <span className="text-xs text-lumina-dim ml-1">+{videosGenerating} gen</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -356,12 +499,43 @@ export default function ContentSwarm() {
             {creatives.map((c) => (
               <div key={c.id} className="p-3 bg-lumina-bg/60 rounded-xl flex flex-wrap items-center gap-3 group">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Play size={14} className="text-lumina-dim" />
-                  </div>
+                  {/* Video thumbnail or placeholder */}
+                  {c.video_url ? (
+                    <a
+                      href={c.video_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-14 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden relative group/thumb hover:ring-2 ring-lumina-pulse transition-all"
+                      title="Open video"
+                    >
+                      <Film size={14} className="text-lumina-success" />
+                      <div className="absolute bottom-0 right-0 bg-lumina-success/90 text-[8px] text-white px-1 rounded-tl">
+                        READY
+                      </div>
+                    </a>
+                  ) : c.api_provider === 'kling' && c.status === 'testing' ? (
+                    <div className="w-14 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0 animate-pulse">
+                      <Loader2 size={14} className="text-lumina-pulse animate-spin" />
+                    </div>
+                  ) : (
+                    <div className="w-14 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Play size={14} className="text-lumina-dim" />
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <div className="text-sm text-lumina-text font-medium truncate">{c.title}</div>
-                    <div className="text-xs text-lumina-dim">{c.platform} Â· {c.tool}</div>
+                    <div className="text-xs text-lumina-dim">
+                      {c.platform} Â· {c.tool}
+                      {c.api_provider === 'kling' && c.video_url && (
+                        <span className="text-lumina-success ml-1">Â· Video ready</span>
+                      )}
+                      {c.api_provider === 'kling' && !c.video_url && c.status === 'testing' && (
+                        <span className="text-lumina-pulse ml-1">Â· Generating...</span>
+                      )}
+                      {c.platform_ready && (
+                        <span className="text-lumina-gold ml-1">Â· Platform-ready</span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-xs font-mono">
@@ -373,6 +547,19 @@ export default function ContentSwarm() {
                         {c.roas}x ROAS
                       </span>
                     </>
+                  )}
+
+                  {/* Video link if available */}
+                  {c.video_url && (
+                    <a
+                      href={c.video_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-lumina-pulse hover:text-lumina-pulse/80"
+                      title="Open video"
+                    >
+                      <ExternalLink size={12} />
+                    </a>
                   )}
 
                   {/* Status cycle: draft â testing â live â paused */}
@@ -522,9 +709,18 @@ export default function ContentSwarm() {
           onClose={() => setShowGenerateModal(false)}
           isPending={generateCreative.isPending}
           onGenerate={(opts) => {
-            generateCreative.mutate(opts, {
-              onSuccess: () => setShowGenerateModal(false),
-            })
+            generateCreative.mutate(
+              {
+                title: opts.title,
+                platform: opts.platform,
+                tool: opts.tool,
+                prompt: opts.prompt,
+                duration: opts.duration,
+                mode: opts.mode,
+                aspect_ratio: opts.aspect_ratio,
+              },
+              { onSuccess: () => setShowGenerateModal(false) },
+            )
           }}
         />
       )}
