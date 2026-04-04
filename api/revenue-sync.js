@@ -1,3 +1,121 @@
+import Stripe from 'stripe';
+import { createClient } from '@supabase/supabase-js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+export default async function handler(req, res) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    // Get last 24 hours timestamp
+    const twentyFourHoursAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+
+    console.log('Syncing Stripe charges from last 24 hours...');
+
+    // Fetch charges from Stripe
+    const charges = await stripe.charges.list({
+      created: { gte: twentyFourHoursAgo },
+      limit: 100,
+    });
+
+    console.log(`Found ${charges.data.length} charges in Stripe`);
+
+    // Get job_id for 'Digital%' products
+    const { data: job } = await supabase
+      .from('ops_jobs')
+      .select('id')
+      .ilike('name', 'Digital%')
+      .single();
+
+    const jobId = job ? job.id : null;
+
+    let syncedCount = 0;
+    const results = [];
+
+    // For each charge, check if it already exists in income_entries
+    for (const charge of charges.data) {
+      // Check if this charge is already recorded (search description for charge ID)
+      const { data: existing } = await supabase
+        .from('income_entries')
+        .select('id')
+        .eq('source', 'stripe')
+        .ilike('description', `%${charge.id}%`)
+        .maybeSingle();
+
+      if (existing) {
+        results.push({
+          charge_id: charge.id,
+          status: 'already_synced',
+        });
+        continue;
+      }
+
+      // Insert new income entry
+      const { error: insertError } = await supabase.from('income_entries').insert({
+        job_id: jobId,
+        source: 'stripe',
+        amount: charge.amount / 100, // Convert cents to dollars (preserve decimals)
+        currency: charge.currency.toUpperCase(),
+        description: `Stripe charge: ${charge.description || 'Digital product sale'}`,
+        metadata: {
+          stripe_charge_id: charge.id,
+          customer_email: charge.billing_details?.email,
+          charge_status: charge.status,
+        },
+      });
+
+      if (insertError) {
+        console.error(`Error inserting charge ${charge.id}:`, insertError);
+        results.push({
+          charge_id: charge.id,
+          status: 'failed',
+          error: insertError.message,
+        });
+        continue;
+      }
+
+      syncedCount++;
+      results.push({
+        charge_id: charge.id,
+        amount: charge.amount / 100,
+        status: 'synced',
+      });
+
+      console.log(`Synced charge ${charge.id}: $${(charge.amount / 100).toFixed(2)}`);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Revenue sync complete: ${syncedCount} new charges synced`,
+      syncedCount,
+      totalChecked: charges.data.length,
+      details: results,
+    });
+  } catch (error) {
+    console.error('Revenue sync error:', error);
+    return res.status(500).json({
+      error: 'Revenue sync failed',
+      details: error.message,
+    });
+  }
+}
 /**
  * Vercel Serverless — Revenue Auto-Sync for All 10 Jobs
  *
