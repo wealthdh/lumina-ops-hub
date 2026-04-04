@@ -1,8 +1,28 @@
+/**
+ * Create Payment Links â REAL Stripe product + price + payment link creation
+ *
+ * POST /api/create-payment-links
+ *   Creates Stripe products, prices, and payment links for all catalog items.
+ *   Each payment link includes after_completion redirect to success page.
+ *   Skips products that already exist in stripe_products table.
+ *
+ * GET /api/create-payment-links?action=orders
+ *   Returns recent orders from the orders table (for dashboard polling).
+ */
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+
+// âââ Site URL for redirects ââââââââââââââââââââââââââââââââââââââââââââââââââ
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL
+  || process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : 'http://localhost:5173';
 
 const products = [
   {
@@ -32,11 +52,16 @@ const products = [
   },
 ];
 
+const log = (level, msg, data) => {
+  const ts = new Date().toISOString();
+  console[level](`[create-payment-links][${ts}] ${msg}`, data ? JSON.stringify(data) : '');
+};
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
   res.setHeader(
     'Access-Control-Allow-Headers',
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
@@ -47,11 +72,34 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ââ GET: Fetch recent orders ââââââââââââââââââââââââââââââââââââââââââââââ
+  if (req.method === 'GET' && req.query?.action === 'orders') {
+    try {
+      const limit = parseInt(req.query?.limit || '50', 10);
+      const { data: orders, error: ordersErr } = await supabase
+        .from('orders')
+        .select('id, stripe_session_id, product_id, buyer_email, amount, currency, payment_status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (ordersErr) {
+        log('error', 'Failed to fetch orders', { error: ordersErr.message });
+        return res.status(500).json({ error: ordersErr.message });
+      }
+
+      return res.status(200).json({ orders: orders || [], count: (orders || []).length });
+    } catch (err) {
+      log('error', 'Orders fetch error', { error: err.message });
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
+    log('info', 'Creating payment links â starting', { product_count: products.length });
     const results = [];
 
     for (const product of products) {
@@ -59,12 +107,13 @@ export default async function handler(req, res) {
       const { data: existing } = await supabase
         .from('stripe_products')
         .select('*')
-        .eq('name', product.name)
+        .eq('product_name', product.name)
         .single();
 
       if (existing) {
+        log('info', 'Product already exists â skipping', { name: product.name });
         results.push({
-          name: product.name,
+          product_name: product.name,
           payment_url: existing.payment_url,
           status: 'already_exists',
         });
@@ -79,6 +128,7 @@ export default async function handler(req, res) {
           internal_product_name: product.name,
         },
       });
+      log('info', 'Stripe product created', { id: stripeProduct.id, name: product.name });
 
       // Create price
       const price = await stripe.prices.create({
@@ -86,8 +136,9 @@ export default async function handler(req, res) {
         unit_amount: product.price,
         currency: 'usd',
       });
+      log('info', 'Stripe price created', { id: price.id, amount: product.price });
 
-      // Create payment link
+      // Create payment link WITH after_completion redirect
       const paymentLink = await stripe.paymentLinks.create({
         line_items: [
           {
@@ -95,11 +146,20 @@ export default async function handler(req, res) {
             quantity: 1,
           },
         ],
+        after_completion: {
+          type: 'redirect',
+          redirect: {
+            url: `${SITE_URL}/?checkout=success&product=${encodeURIComponent(product.name)}`,
+          },
+        },
+        // Collect email for order matching
+        phone_number_collection: { enabled: false },
       });
+      log('info', 'Payment link created', { id: paymentLink.id, url: paymentLink.url });
 
       // Insert into Supabase
       const { error } = await supabase.from('stripe_products').insert({
-        name: product.name,
+        product_name: product.name,
         stripe_product_id: stripeProduct.id,
         stripe_price_id: price.id,
         stripe_payment_link_id: paymentLink.id,
@@ -108,14 +168,25 @@ export default async function handler(req, res) {
         status: 'active',
       });
 
-      if (error) throw error;
+      if (error) {
+        log('error', 'Supabase insert failed', { error: error.message, product: product.name });
+        throw error;
+      }
 
       results.push({
-        name: product.name,
+        product_name: product.name,
         payment_url: paymentLink.url,
+        stripe_product_id: stripeProduct.id,
+        stripe_price_id: price.id,
         status: 'created',
       });
     }
+
+    log('info', 'Payment links creation complete', {
+      total: results.length,
+      created: results.filter(r => r.status === 'created').length,
+      existing: results.filter(r => r.status === 'already_exists').length,
+    });
 
     return res.status(200).json({
       success: true,
@@ -123,7 +194,7 @@ export default async function handler(req, res) {
       products: results,
     });
   } catch (error) {
-    console.error('Error creating payment links:', error);
+    log('error', 'Unhandled error', { error: error.message, stack: error.stack });
     return res.status(500).json({
       error: 'Failed to create payment links',
       details: error.message,
