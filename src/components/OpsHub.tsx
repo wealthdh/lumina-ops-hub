@@ -19,6 +19,7 @@ import CustomerAcquisitionEngine from './CustomerAcquisitionEngine'
 import PolymarketScriptTrader from './PolymarketScriptTrader'
 import AgentOrchestrator from './AgentOrchestrator'
 import AIEducationHub from './AIEducationHub'
+import Settings from './Settings'
 import WalletPanel from './WalletPanel'
 import EarningsTicker from './EarningsTicker'
 import GoalTracker from './GoalTracker'
@@ -386,6 +387,7 @@ export default function OpsHub({ activeTab }: OpsHubProps) {
         {activeTab === 'agent-orchestrator' && <AgentOrchestrator />}
         {activeTab === 'education'       && <AIEducationHub />}
         {activeTab === 'tax-optimizer'   && <TaxOptimizer />}
+        {activeTab === 'settings'        && <Settings />}
       </div>
     </div>
   )

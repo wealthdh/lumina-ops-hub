@@ -10,7 +10,7 @@
  */
 import { useState, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Zap, RefreshCw, TrendingUp, AlertCircle, CheckCircle, Inbox } from 'lucide-react'
+import { Zap, RefreshCw, TrendingUp, AlertCircle, CheckCircle, Inbox, Loader } from 'lucide-react'
 import { detectArbitrage } from '../lib/polymarket'
 import { usePolyMarkets, useArbitrageSignals } from '../hooks/useSupabaseData'
 import { useMT5Trades } from '../hooks/useMT5'
@@ -40,6 +40,11 @@ export default function EdgeHarmonizer() {
   const [scanning, setScanning] = useState(false)
   const [autoMode, setAutoMode] = useState(false)
   const [scanComplete, setScanComplete] = useState<{ count: number; time: string } | null>(null)
+  const [executingSignal, setExecutingSignal] = useState<string | null>(null)
+  const [buildingCustom, setBuildingCustom] = useState(false)
+  const [polyMarketSide, setPolyMarketSide] = useState<string>('')
+  const [mt5Hedge, setMt5Hedge] = useState('EURUSD')
+  const [capital, setCapital] = useState(3000)
   const qc = useQueryClient()
 
   // ── LIVE data from Supabase ─────────────────────────────────────────────────
@@ -50,8 +55,12 @@ export default function EdgeHarmonizer() {
   // Derive MT5 implied probabilities from live trades
   const mt5Implied = useMemo(() => deriveMT5Implied(mt5Trades), [mt5Trades])
 
-  // Live arbitrage detection
-  const signals = detectArbitrage(markets, mt5Implied, 0.03)
+  // Live arbitrage detection — more sensitive threshold for better detection
+  const signals = useMemo(() => {
+    // Use lower threshold (2%) for more signals, or 3% if too many
+    const detected = detectArbitrage(markets, mt5Implied, 0.02)
+    return detected.length > 0 ? detected : detectArbitrage(markets, mt5Implied, 0.03)
+  }, [markets, mt5Implied])
 
   // Build Polymarket options for the custom builder
   const polyOptions = markets.slice(0, 6).map((m) => {
@@ -81,8 +90,8 @@ export default function EdgeHarmonizer() {
         }))
       )
 
-      // Run arbitrage detection
-      const detected = detectArbitrage(
+      // Run arbitrage detection with two-tier sensitivity
+      let detected = detectArbitrage(
         polyData.map((p: Record<string, unknown>) => ({
           id: p.id as string,
           question: p.question as string,
@@ -99,8 +108,31 @@ export default function EdgeHarmonizer() {
           active: Boolean(p.active),
         })),
         derived,
-        0.03
+        0.02  // Use more sensitive threshold first
       )
+
+      // If too few signals, try less sensitive threshold
+      if (detected.length === 0) {
+        detected = detectArbitrage(
+          polyData.map((p: Record<string, unknown>) => ({
+            id: p.id as string,
+            question: p.question as string,
+            slug: p.slug as string,
+            endDate: p.end_date as string,
+            volume: Number(p.volume ?? 0),
+            liquidity: Number(p.liquidity ?? 0),
+            outcomes: ((p.outcomes as Record<string, unknown>[]) ?? []).map((o) => ({
+              name: o.name as string,
+              price: Number(o.price ?? 0),
+              clobTokenId: o.clobTokenId as string,
+            })),
+            category: p.category as string,
+            active: Boolean(p.active),
+          })),
+          derived,
+          0.03  // Fall back to standard threshold
+        )
+      }
 
       // Invalidate cache
       void qc.invalidateQueries({ queryKey: ['arbitrage'] })
@@ -113,6 +145,79 @@ export default function EdgeHarmonizer() {
       console.error('[EdgeHarmonizer] Scan error:', err)
     } finally {
       setScanning(false)
+    }
+  }
+
+  async function executeSignal(signal: typeof signals[0]) {
+    setExecutingSignal(signal.marketId)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      // Create synthetic trade record in Supabase
+      const { error } = await supabase.from('arbitrage_signals').insert({
+        user_id: user.id,
+        market_id: signal.marketId,
+        description: signal.question,
+        type: signal.direction === 'buy-poly' ? 'buy' : 'sell',
+        status: 'executed',
+        expected_edge: signal.edgePct / 100,
+        poly_price: signal.polyPrice,
+        mt5_implied: signal.mt5ImpliedProb,
+        confidence: signal.confidence,
+        capital_allocated: signal.suggestedCapital,
+        created_at: new Date().toISOString(),
+      })
+
+      if (error) throw error
+
+      // Invalidate arbitrage cache to refresh
+      await qc.invalidateQueries({ queryKey: ['arbitrage'] })
+    } catch (err) {
+      console.error('[EdgeHarmonizer] Execute error:', err)
+    } finally {
+      setExecutingSignal(null)
+    }
+  }
+
+  async function buildAndExecuteCustom() {
+    setBuildingCustom(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      // Build synthetic trade from custom inputs
+      const description = polyMarketSide && polyOptions.find(p => p.id === polyMarketSide)
+        ? `${polyOptions.find(p => p.id === polyMarketSide)?.label ?? 'Custom'} hedged with ${mt5Hedge}`
+        : `Custom ${mt5Hedge} hedge trade`
+
+      const { error } = await supabase.from('arbitrage_signals').insert({
+        user_id: user.id,
+        market_id: polyMarketSide || 'custom',
+        description,
+        type: 'custom',
+        status: 'executed',
+        expected_edge: signals[0] ? signals[0].edgePct / 100 : 0.02,
+        poly_price: signals[0]?.polyPrice ?? 0.5,
+        mt5_implied: signals[0]?.mt5ImpliedProb ?? 0.5,
+        confidence: signals[0]?.confidence ?? 50,
+        capital_allocated: capital,
+        created_at: new Date().toISOString(),
+      })
+
+      if (error) throw error
+
+      // Reset form
+      setPolyMarketSide('')
+      setMt5Hedge('EURUSD')
+      setCapital(3000)
+
+      // Invalidate cache
+      await qc.invalidateQueries({ queryKey: ['arbitrage'] })
+    } catch (err) {
+      console.error('[EdgeHarmonizer] Custom build error:', err)
+    } finally {
+      setBuildingCustom(false)
     }
   }
 
@@ -221,9 +326,22 @@ export default function EdgeHarmonizer() {
                   <span className="text-xs text-lumina-dim capitalize">
                     Direction: <span className="text-lumina-text">{s.direction}</span>
                   </span>
-                  <button className="btn-pulse text-xs py-1.5 px-4 flex items-center gap-1.5">
-                    <Zap size={11} />
-                    Execute Synthetic
+                  <button
+                    onClick={() => executeSignal(s)}
+                    disabled={executingSignal === s.marketId}
+                    className="btn-pulse text-xs py-1.5 px-4 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {executingSignal === s.marketId ? (
+                      <>
+                        <Loader size={11} className="animate-spin" />
+                        Executing…
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={11} />
+                        Execute Synthetic
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -239,7 +357,12 @@ export default function EdgeHarmonizer() {
           <div className="space-y-3">
             <div>
               <label className="text-xs text-lumina-dim block mb-1">Polymarket Side</label>
-              <select className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-3 py-2 text-sm text-lumina-text focus:border-lumina-pulse outline-none">
+              <select
+                value={polyMarketSide}
+                onChange={(e) => setPolyMarketSide(e.target.value)}
+                className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-3 py-2 text-sm text-lumina-text focus:border-lumina-pulse outline-none"
+              >
+                <option value="">Select a market…</option>
                 {polyOptions.length > 0 ? (
                   polyOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)
                 ) : (
@@ -249,17 +372,28 @@ export default function EdgeHarmonizer() {
             </div>
             <div>
               <label className="text-xs text-lumina-dim block mb-1">MT5 Hedge Instrument</label>
-              <select className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-3 py-2 text-sm text-lumina-text focus:border-lumina-pulse outline-none">
-                <option>EURUSD (BUY — rate cut bullish)</option>
-                <option>XAUUSD (BUY — risk-off hedge)</option>
-                <option>USDJPY (SELL — rate diff)</option>
+              <select
+                value={mt5Hedge}
+                onChange={(e) => setMt5Hedge(e.target.value)}
+                className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-3 py-2 text-sm text-lumina-text focus:border-lumina-pulse outline-none"
+              >
+                <option value="EURUSD">EURUSD (BUY — rate cut bullish)</option>
+                <option value="XAUUSD">XAUUSD (BUY — risk-off hedge)</option>
+                <option value="USDJPY">USDJPY (SELL — rate diff)</option>
               </select>
             </div>
           </div>
           <div className="space-y-3">
             <div>
               <label className="text-xs text-lumina-dim block mb-1">Capital (USDT)</label>
-              <input type="number" defaultValue={3000} className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-3 py-2 text-sm font-mono text-lumina-text focus:border-lumina-pulse outline-none" />
+              <input
+                type="number"
+                min={100}
+                max={50000}
+                value={capital}
+                onChange={(e) => setCapital(Math.max(100, Number(e.target.value)))}
+                className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-3 py-2 text-sm font-mono text-lumina-text focus:border-lumina-pulse outline-none"
+              />
             </div>
             <div className="p-3 bg-lumina-pulse/10 border border-lumina-pulse/20 rounded-lg">
               <div className="text-xs text-lumina-dim mb-1">Computed Metrics</div>
@@ -269,7 +403,23 @@ export default function EdgeHarmonizer() {
                 <div><div className="text-lumina-dim">Max Loss</div><div className="text-lumina-danger">{signals[0] ? `-$${Math.round(signals[0].suggestedCapital * 0.048)}` : '—'}</div></div>
               </div>
             </div>
-            <button className="btn-pulse w-full">Build & Execute Synthetic</button>
+            <button
+              onClick={buildAndExecuteCustom}
+              disabled={buildingCustom}
+              className="btn-pulse w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {buildingCustom ? (
+                <>
+                  <Loader size={14} className="animate-spin" />
+                  Building…
+                </>
+              ) : (
+                <>
+                  <Zap size={14} />
+                  Build & Execute Synthetic
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

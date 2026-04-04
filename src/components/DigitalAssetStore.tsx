@@ -4,7 +4,7 @@
  * Blog Article 3 Stream 4: "Licensing Digital Assets"
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Package, ShoppingCart, Star, TrendingUp, Plus, ExternalLink, BarChart3, Award } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -34,144 +34,91 @@ interface TopSeller {
   sales: number
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const PRODUCTS: Product[] = [
+// ─── Default Products ─────────────────────────────────────────────────────────
+const DEFAULT_PRODUCTS: Product[] = [
   {
     id: 'prod-1',
-    title: 'LuminaPulse MT5 Indicator Pack',
+    title: 'MT5 Gold Scalper EA',
     category: 'Trading Indicators',
-    price: 79,
-    sales: 89,
-    revenue: 7031,
-    rating: 4.9,
+    price: 97,
+    sales: 0,
+    revenue: 0,
+    rating: 0,
     status: 'live',
-    gumroadUrl: 'https://gumroad.com/luminapulse',
+    gumroadUrl: 'https://gumroad.com/l/mt5-gold-scalper-ea',
   },
   {
     id: 'prod-2',
-    title: 'Polymarket Edge-Entry Script Template',
+    title: 'Polymarket Edge Scanner',
     category: 'Templates',
-    price: 49,
-    sales: 62,
-    revenue: 3038,
-    rating: 4.7,
+    price: 47,
+    sales: 0,
+    revenue: 0,
+    rating: 0,
     status: 'live',
-    gumroadUrl: 'https://gumroad.com/polymarket-edge',
+    gumroadUrl: 'https://gumroad.com/l/polymarket-edge-scanner',
   },
   {
     id: 'prod-3',
-    title: 'AI Trading Prompt Pack',
+    title: 'AI Prompt Engineering Toolkit',
     category: 'AI Prompt Packs',
-    price: 19,
-    sales: 156,
-    revenue: 2964,
-    rating: 4.8,
+    price: 29,
+    sales: 0,
+    revenue: 0,
+    rating: 0,
     status: 'live',
-    gumroadUrl: 'https://gumroad.com/ai-trading-prompts',
+    gumroadUrl: 'https://gumroad.com/l/ai-prompt-toolkit',
   },
   {
     id: 'prod-4',
-    title: 'Vibe-Code Website Template Bundle',
+    title: 'Content Swarm Templates',
     category: 'Templates',
-    price: 39,
-    sales: 34,
-    revenue: 1326,
-    rating: 4.6,
+    price: 19,
+    sales: 0,
+    revenue: 0,
+    rating: 0,
     status: 'live',
-    gumroadUrl: 'https://gumroad.com/vibe-code',
+    gumroadUrl: 'https://gumroad.com/l/content-swarm-templates',
   },
   {
     id: 'prod-5',
-    title: 'DeFi Yield Strategy Playbook',
+    title: 'Kelly Criterion Calculator',
     category: 'Datasets',
-    price: 29,
-    sales: 45,
-    revenue: 1305,
-    rating: 4.8,
+    price: 14.99,
+    sales: 0,
+    revenue: 0,
+    rating: 0,
     status: 'live',
-    gumroadUrl: 'https://gumroad.com/defi-yield',
+    gumroadUrl: 'https://gumroad.com/l/kelly-calculator',
   },
   {
     id: 'prod-6',
-    title: 'SEO Content Swarm Blueprint',
+    title: 'Lumina Dashboard Theme',
     category: 'Templates',
-    price: 24,
-    sales: 71,
-    revenue: 1704,
-    rating: 4.7,
-    status: 'live',
-    gumroadUrl: 'https://gumroad.com/seo-blueprint',
-  },
-  {
-    id: 'prod-7',
-    title: 'Client Acquisition Funnel Template',
-    category: 'Templates',
-    price: 59,
-    sales: 28,
-    revenue: 1652,
-    rating: 4.9,
-    status: 'live',
-    gumroadUrl: 'https://gumroad.com/client-funnel',
-  },
-  {
-    id: 'prod-8',
-    title: 'Monthly Market Analysis Dataset',
-    category: 'Datasets',
-    price: 99,
-    sales: 12,
-    revenue: 1188,
-    rating: 5.0,
-    status: 'live',
-    gumroadUrl: 'https://gumroad.com/market-analysis',
-    isSubscription: true,
-  },
-  {
-    id: 'prod-9',
-    title: 'Advanced Trading Bot Template',
-    category: 'Templates',
-    price: 149,
+    price: 9.99,
     sales: 0,
     revenue: 0,
     rating: 0,
-    status: 'draft',
-    gumroadUrl: 'https://gumroad.com/trading-bot',
-  },
-  {
-    id: 'prod-10',
-    title: 'Crypto Analysis Toolkit',
-    category: 'AI Prompt Packs',
-    price: 39,
-    sales: 0,
-    revenue: 0,
-    rating: 0,
-    status: 'draft',
-    gumroadUrl: 'https://gumroad.com/crypto-toolkit',
+    status: 'live',
+    gumroadUrl: 'https://gumroad.com/l/lumina-dashboard-theme',
   },
 ]
 
 const DAILY_SALES: DailySalesData[] = [
-  { day: 1, sales: 8 },
-  { day: 2, sales: 12 },
-  { day: 3, sales: 15 },
-  { day: 4, sales: 9 },
-  { day: 5, sales: 18 },
-  { day: 6, sales: 14 },
-  { day: 7, sales: 22 },
-  { day: 8, sales: 11 },
-  { day: 9, sales: 19 },
-  { day: 10, sales: 16 },
-  { day: 11, sales: 13 },
-  { day: 12, sales: 20 },
-  { day: 13, sales: 17 },
-  { day: 14, sales: 23 },
-]
-
-const TOP_SELLERS: TopSeller[] = [
-  { name: 'LuminaPulse MT5 Indicator Pack', revenue: 7031, percentageOfTotal: 32.8, sales: 89 },
-  { name: 'AI Trading Prompt Pack', revenue: 2964, percentageOfTotal: 13.8, sales: 156 },
-  { name: 'Polymarket Edge-Entry Script', revenue: 3038, percentageOfTotal: 14.2, sales: 62 },
-  { name: 'SEO Content Swarm Blueprint', revenue: 1704, percentageOfTotal: 7.9, sales: 71 },
-  { name: 'Client Acquisition Funnel', revenue: 1652, percentageOfTotal: 7.7, sales: 28 },
+  { day: 1, sales: 0 },
+  { day: 2, sales: 0 },
+  { day: 3, sales: 0 },
+  { day: 4, sales: 0 },
+  { day: 5, sales: 0 },
+  { day: 6, sales: 0 },
+  { day: 7, sales: 0 },
+  { day: 8, sales: 0 },
+  { day: 9, sales: 0 },
+  { day: 10, sales: 0 },
+  { day: 11, sales: 0 },
+  { day: 12, sales: 0 },
+  { day: 13, sales: 0 },
+  { day: 14, sales: 0 },
 ]
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -217,7 +164,7 @@ function StarRating({ rating }: { rating: number }) {
 }
 
 function SimpleBarChart({ data }: { data: DailySalesData[] }) {
-  const maxSales = Math.max(...data.map(d => d.sales))
+  const maxSales = Math.max(...data.map(d => d.sales), 1)
 
   return (
     <div className="h-32 flex items-end justify-between gap-2">
@@ -239,6 +186,7 @@ function SimpleBarChart({ data }: { data: DailySalesData[] }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function DigitalAssetStore() {
+  const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS)
   const [newProduct, setNewProduct] = useState({
     name: '',
     price: '',
@@ -246,14 +194,60 @@ export default function DigitalAssetStore() {
     description: '',
   })
 
-  const totalProducts = PRODUCTS.length
-  const totalSales = PRODUCTS.reduce((sum, p) => sum + p.sales, 0)
-  const totalRevenue = PRODUCTS.reduce((sum, p) => sum + p.revenue, 0)
-  const avgRating = (PRODUCTS.reduce((sum, p) => sum + p.rating, 0) / PRODUCTS.length).toFixed(1)
+  // Load products from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('lumina-products')
+      if (saved) {
+        setProducts(JSON.parse(saved))
+      }
+    } catch (error) {
+      console.error('Error loading products from localStorage:', error)
+    }
+  }, [])
+
+  // Save products to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('lumina-products', JSON.stringify(products))
+    } catch (error) {
+      console.error('Error saving products to localStorage:', error)
+    }
+  }, [products])
+
+  const totalProducts = products.length
+  const totalSales = products.reduce((sum, p) => sum + p.sales, 0)
+  const totalRevenue = products.reduce((sum, p) => sum + p.revenue, 0)
+  const avgRating = products.filter(p => p.rating > 0).length > 0
+    ? (products.filter(p => p.rating > 0).reduce((sum, p) => sum + p.rating, 0) / products.filter(p => p.rating > 0).length).toFixed(1)
+    : '0.0'
+
+  const topSellers: TopSeller[] = products
+    .filter(p => p.revenue > 0)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5)
+    .map(p => ({
+      name: p.title,
+      revenue: p.revenue,
+      percentageOfTotal: totalRevenue > 0 ? (p.revenue / totalRevenue) * 100 : 0,
+      sales: p.sales,
+    }))
 
   const handleCreateProduct = () => {
     if (newProduct.name && newProduct.price) {
-      // Reset form
+      const newProd: Product = {
+        id: `prod-${Date.now()}`,
+        title: newProduct.name,
+        category: newProduct.category,
+        price: parseFloat(newProduct.price),
+        sales: 0,
+        revenue: 0,
+        rating: 0,
+        status: 'draft',
+        gumroadUrl: `https://gumroad.com/l/${newProduct.name.toLowerCase().replace(/\s+/g, '-')}`,
+      }
+
+      setProducts([...products, newProd])
       setNewProduct({
         name: '',
         price: '',
@@ -269,7 +263,7 @@ export default function DigitalAssetStore() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lumina-text font-bold text-xl">Digital Asset Store</h1>
-          <p className="text-lumina-dim text-sm">Create once, sell infinite times · Gumroad · Etsy integration</p>
+          <p className="text-lumina-dim text-sm">Create once, sell infinite times · Gumroad Integration</p>
         </div>
       </div>
 
@@ -300,11 +294,11 @@ export default function DigitalAssetStore() {
           Digital Products
         </div>
         <div className="p-3 mb-4 bg-lumina-gold/5 border border-lumina-gold/20 rounded-lg text-xs text-lumina-dim">
-          Products with $0 revenue showing draft status. <span className="text-lumina-gold">Connect Gumroad API for live sales data</span>.
+          <span className="text-lumina-gold">Ready to sell:</span> All products link to Gumroad. Add your product details and share the links.
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {PRODUCTS.map((product) => (
+          {products.map((product) => (
             <div
               key={product.id}
               className="p-4 bg-lumina-bg/60 rounded-xl border border-lumina-border hover:border-lumina-pulse/30 transition-all"
@@ -324,12 +318,16 @@ export default function DigitalAssetStore() {
                   ${product.price}{product.isSubscription ? '/mo' : ''}
                 </span>
                 <span className="text-xs text-lumina-dim">{product.sales} sales</span>
-                <span className="text-xs text-lumina-pulse font-mono">${product.revenue}</span>
+                <span className="text-xs text-lumina-pulse font-mono">${product.revenue.toLocaleString()}</span>
               </div>
 
               {/* Rating */}
               <div className="mb-4">
-                <StarRating rating={product.rating} />
+                {product.rating > 0 ? (
+                  <StarRating rating={product.rating} />
+                ) : (
+                  <p className="text-xs text-lumina-dim">No ratings yet</p>
+                )}
               </div>
 
               {/* View link */}
@@ -369,36 +367,42 @@ export default function DigitalAssetStore() {
           Top Sellers by Revenue
         </div>
 
-        <div className="space-y-3">
-          {TOP_SELLERS.map((seller, idx) => (
-            <div key={idx} className="p-3 bg-lumina-bg/60 rounded-lg">
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-lumina-muted">#{idx + 1}</span>
-                    <h4 className="text-sm font-medium text-lumina-text truncate">{seller.name}</h4>
+        {topSellers.length > 0 ? (
+          <div className="space-y-3">
+            {topSellers.map((seller, idx) => (
+              <div key={idx} className="p-3 bg-lumina-bg/60 rounded-lg">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold text-lumina-muted">#{idx + 1}</span>
+                      <h4 className="text-sm font-medium text-lumina-text truncate">{seller.name}</h4>
+                    </div>
+                    <div className="flex gap-3 text-xs text-lumina-dim">
+                      <span>{seller.sales} sales</span>
+                      <span>${seller.revenue.toLocaleString()}</span>
+                    </div>
                   </div>
-                  <div className="flex gap-3 text-xs text-lumina-dim">
-                    <span>{seller.sales} sales</span>
-                    <span>${seller.revenue.toLocaleString()}</span>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-lumina-gold">{seller.percentageOfTotal.toFixed(1)}%</div>
+                    <p className="text-xs text-lumina-dim">of total</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-semibold text-lumina-gold">{seller.percentageOfTotal}%</div>
-                  <p className="text-xs text-lumina-dim">of total</p>
-                </div>
-              </div>
 
-              {/* Progress bar */}
-              <div className="w-full bg-lumina-border/20 rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-lumina-gold to-lumina-pulse rounded-full"
-                  style={{ width: `${seller.percentageOfTotal}%` }}
-                />
+                {/* Progress bar */}
+                <div className="w-full bg-lumina-border/20 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-lumina-gold to-lumina-pulse rounded-full"
+                    style={{ width: `${seller.percentageOfTotal}%` }}
+                  />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-6 text-center text-lumina-muted">
+            No sales yet. Create products and share your Gumroad links!
+          </div>
+        )}
       </div>
 
       {/* Create New Product */}

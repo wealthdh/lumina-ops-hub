@@ -123,10 +123,14 @@ export function useCloneJob() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (job: Job) => {
+      // Get current user to set user_id for cloned job
+      const { data: { user } } = await supabase.auth.getUser()
+      const userId = user?.id ?? '0ce62691-721c-4eba-bf3e-052731d9839b'
+
       const { data, error } = await supabase
         .from('ops_jobs')
         .insert({
-          user_id: job.id ? undefined : '0ce62691-721c-4eba-bf3e-052731d9839b',
+          user_id: userId,
           name: `${job.name} (Clone)`,
           status: 'paused',
           daily_profit: 0,

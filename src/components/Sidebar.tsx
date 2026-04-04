@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Zap, Users, Shield, GitBranch,
   Video, TrendingUp, DollarSign, ChevronLeft, ChevronRight,
   Activity, Cpu, History, Sun, Moon, Bell,
-  Megaphone, Bot, BrainCircuit, GraduationCap, Landmark,
+  Megaphone, Bot, BrainCircuit, GraduationCap, Landmark, Settings,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useNotificationPermission } from '../hooks/useNotifications'
@@ -32,6 +32,7 @@ const NAV_ITEMS = [
   { id: 'agent-orchestrator', label: 'Agent Fleet',      icon: BrainCircuit },
   { id: 'education',      label: 'AI Education Hub',    icon: GraduationCap },
   { id: 'tax-optimizer',  label: 'Tax Shield Vault',    icon: Landmark },
+  { id: 'settings',       label: 'Settings',             icon: Settings },
 ]
 
 export default function Sidebar({ activeTab, onTabChange, collapsed, onToggle, isDark = true, onThemeToggle }: SidebarProps) {

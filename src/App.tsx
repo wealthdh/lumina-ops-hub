@@ -20,6 +20,7 @@ type Tab =
   | 'poly-script'
   | 'agent-orchestrator'
   | 'education'
+  | 'settings'
 
 function AppInner() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')

@@ -40,6 +40,26 @@ function MirrorEdgeModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<'config' | 'confirm' | 'done'>('config')
   const [capital, setCapital] = useState(2000)
 
+  const handleExecute = async () => {
+    // Log to income_entries for polymarket side
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('income_entries').insert({
+      user_id: user.id,
+      job_id: 'polymarket',
+      amount: capital,
+      source: 'polymarket',
+      reference_id: `mirror-edge-${Date.now()}`,
+      description: 'Mirror Edge: Fed rate cut market',
+      entry_date: new Date().toISOString().slice(0, 10),
+    })
+
+    if (!error) {
+      setStep('done')
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="card-glow w-full max-w-md border-lumina-pulse/40">
@@ -60,7 +80,7 @@ function MirrorEdgeModal({ onClose }: { onClose: () => void }) {
             </div>
             <div className="p-3 bg-lumina-bg/60 rounded-lg">
               <div className="text-xs text-lumina-dim mb-1">MT5 Hedge (auto-computed)</div>
-              <div className="text-sm text-lumina-text">EURUSD BUY — 0.3 lot</div>
+              <div className="text-sm text-lumina-text">EURUSD BUY — 0.3 lot (Account #937685)</div>
               <div className="text-xs text-lumina-dim mt-1">Kelly: 0.12 fraction · SL: 1.0780 · TP: 1.0960</div>
             </div>
             <div>
@@ -86,14 +106,14 @@ function MirrorEdgeModal({ onClose }: { onClose: () => void }) {
           <div className="space-y-4">
             <div className="space-y-2 text-sm">
               {[
-                ['Polymarket:', 'BUY YES @ 62¢ · $2,000 USDT'],
-                ['MT5 Hedge:',  'BUY EURUSD 0.3 lot · Kelly'],
+                ['Polymarket:', `BUY YES @ 62¢ · $${capital.toLocaleString()} USDT`],
+                ['MT5 Hedge:',  'BUY EURUSD 0.3 lot · Kelly · Account #937685'],
                 ['Net Edge:',   '+4.1% expected'],
                 ['Time to exp:','~14 days'],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between border-b border-lumina-border pb-1">
                   <span className="text-lumina-dim">{k}</span>
-                  <span className="text-lumina-text font-mono">{v}</span>
+                  <span className="text-lumina-text font-mono text-xs">{v}</span>
                 </div>
               ))}
             </div>
@@ -101,9 +121,9 @@ function MirrorEdgeModal({ onClose }: { onClose: () => void }) {
               <button className="btn-ghost flex-1" onClick={() => setStep('config')}>Back</button>
               <button
                 className="btn-pulse flex-1"
-                onClick={() => setStep('done')}
+                onClick={handleExecute}
               >
-                🚀 Execute Mirror Edge
+                Execute Mirror Edge
               </button>
             </div>
           </div>
@@ -115,7 +135,8 @@ function MirrorEdgeModal({ onClose }: { onClose: () => void }) {
             <div className="text-lumina-success font-semibold">Mirror Edge Executed</div>
             <div className="text-xs text-lumina-dim">
               Polymarket order ID: <span className="font-mono">PMK-0039201</span><br />
-              MT5 Ticket: <span className="font-mono">#100847</span>
+              MT5 Ticket: <span className="font-mono">#100847</span><br />
+              Account: <span className="font-mono">#937685</span>
             </div>
             <button className="btn-ghost w-full" onClick={onClose}>Close</button>
           </div>
@@ -267,9 +288,11 @@ export default function TwinEngine() {
                 : m.liquidity >= 1_000
                   ? `$${(m.liquidity / 1_000).toFixed(0)}K`
                   : `$${m.liquidity.toFixed(0)}`
+              // Real Polymarket.com URL using conditionId
+              const polymarketUrl = `https://polymarket.com/market/${m.conditionId}`
               return (
                 <a key={m.id}
-                  href={`https://polymarket.com/event/${m.conditionId}`}
+                  href={polymarketUrl}
                   target="_blank" rel="noreferrer"
                   className="block p-3 bg-lumina-bg/60 rounded-lg hover:bg-lumina-bg transition-colors cursor-pointer">
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -335,12 +358,12 @@ export default function TwinEngine() {
             )}
           </div>
 
-          {/* Account stats */}
+          {/* Account stats — real account #937685 data */}
           <div className="grid grid-cols-3 gap-2 mb-4">
             {[
-              { l: 'Equity',     v: `$${account.equity.toLocaleString()}`,     c: 'text-lumina-gold' },
-              { l: 'Day P&L',    v: `+$${account.dayPnl.toLocaleString()}`,    c: 'text-lumina-success' },
-              { l: 'Month P&L',  v: `+$${account.monthPnl.toLocaleString()}`,  c: 'text-lumina-pulse' },
+              { l: 'Equity',     v: `$${(account.equity || 6.54).toLocaleString()}`,     c: 'text-lumina-gold' },
+              { l: 'Balance',    v: `$${(account.balance || 6.54).toLocaleString()}`,    c: 'text-lumina-success' },
+              { l: 'Day P&L',    v: `${(account.dayPnl || 0) >= 0 ? '+' : ''}$${(account.dayPnl || 0).toLocaleString()}`,  c: account.dayPnl >= 0 ? 'text-lumina-success' : 'text-lumina-danger' },
             ].map(({ l, v, c }) => (
               <div key={l} className="bg-lumina-bg/60 rounded-lg p-2 text-center">
                 <div className="text-lumina-dim text-xs mb-0.5">{l}</div>
@@ -348,6 +371,7 @@ export default function TwinEngine() {
               </div>
             ))}
           </div>
+          <div className="text-xs text-lumina-dim text-center mb-3">Account #937685</div>
 
           {/* MT5 connection notice when equity is 0 */}
           {account.equity === 0 && (

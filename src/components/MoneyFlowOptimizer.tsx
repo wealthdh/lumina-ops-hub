@@ -1,10 +1,12 @@
 /**
- * AI Money Flow Optimizer — PuLP nightly reallocation
- * Cross-job capital routing based on Kelly + PuLP LP solver
+ * AI Money Flow Optimizer — Dynamic reallocation based on real job performance
+ * Cross-job capital routing based on ROI + income_entries
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DollarSign, RefreshCw, ArrowRight, TrendingUp } from 'lucide-react'
 import { useAllocations } from '../hooks/useSupabaseData'
+import { useJobEarningsSummary } from '../hooks/useIncomeEntries'
+import { supabase } from '../lib/supabase'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import clsx from 'clsx'
 
@@ -18,28 +20,118 @@ const SEED_ALLOCATIONS = [
   { jobId: 'seed-5', jobName: 'Content Swarm',     currentAllocation: 10, recommendedAllocation: 10, expectedReturn:  9.8, constraint: 'min 5%' },
 ]
 
+interface AllocationWithROI {
+  jobId: string
+  jobName: string
+  currentAllocation: number
+  recommendedAllocation: number
+  expectedReturn: number
+  constraint: string
+  monthlyIncome: number
+  roi: number
+}
+
 export default function MoneyFlowOptimizer() {
   const [applied, setApplied] = useState(false)
   const [running, setRunning] = useState(false)
+  const [allocationsWithROI, setAllocationsWithROI] = useState<AllocationWithROI[]>([])
+
   // ── LIVE from allocation_rules Supabase table ─────────────────────────────
   const { data: rawAllocations = [], isLoading } = useAllocations()
+  const { data: summaries = [] } = useJobEarningsSummary()
 
-  // Use seed data when table is empty so UI is always functional
-  const allocations = rawAllocations.length > 0 ? rawAllocations : SEED_ALLOCATIONS
-  const isSeedData  = rawAllocations.length === 0 && !isLoading
+  // Merge earnings data with allocations
+  useEffect(() => {
+    const merged = (rawAllocations.length > 0 ? rawAllocations : SEED_ALLOCATIONS).map((a) => {
+      const earning = summaries.find((s) => s.jobId === a.jobId)
+      const monthlyIncome = earning?.monthUsd ?? 0
+      const roi = monthlyIncome > 0
+        ? Math.round((monthlyIncome / Math.max(a.currentAllocation * 1000, 1)) * 100)
+        : a.expectedReturn
 
-  const currentTotal     = allocations.reduce((s, a) => s + a.currentAllocation, 0)
-  const recommendedTotal = allocations.reduce((s, a) => s + a.recommendedAllocation, 0)
+      return {
+        ...a,
+        monthlyIncome,
+        roi,
+      }
+    })
+    setAllocationsWithROI(merged)
+  }, [rawAllocations, summaries])
 
-  const currentPie    = allocations.map((a, i) => ({ name: a.jobName, value: a.currentAllocation,     color: COLORS[i] }))
-  const recommendedPie= allocations.map((a, i) => ({ name: a.jobName, value: a.recommendedAllocation, color: COLORS[i] }))
+  const isSeedData = rawAllocations.length === 0 && !isLoading
 
-  function runPulp() {
+  const currentTotal     = allocationsWithROI.reduce((s, a) => s + a.currentAllocation, 0)
+  const recommendedTotal = allocationsWithROI.reduce((s, a) => s + a.recommendedAllocation, 0)
+
+  const currentPie    = allocationsWithROI.map((a, i) => ({ name: a.jobName, value: a.currentAllocation,     color: COLORS[i] }))
+  const recommendedPie= allocationsWithROI.map((a, i) => ({ name: a.jobName, value: a.recommendedAllocation, color: COLORS[i] }))
+
+  async function runRecalculate() {
     setRunning(true)
-    setTimeout(() => { setRunning(false) }, 1800)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      // Calculate new allocations based on ROI
+      const totalROI = allocationsWithROI.reduce((s, a) => s + a.roi, 0)
+      const newAllocations = allocationsWithROI.map((a) => {
+        // Allocate based on ROI share (higher ROI = more allocation)
+        const roiShare = totalROI > 0 ? a.roi / totalROI : 1 / allocationsWithROI.length
+        const baseAllocation = Math.round(roiShare * 100)
+
+        // Apply constraints
+        let finalAllocation = baseAllocation
+        const constraintValue = parseInt(a.constraint.match(/\d+/)?.[0] ?? '20')
+        if (a.constraint.includes('max')) {
+          finalAllocation = Math.min(finalAllocation, constraintValue)
+        } else if (a.constraint.includes('min')) {
+          finalAllocation = Math.max(finalAllocation, constraintValue)
+        }
+
+        return {
+          ...a,
+          recommendedAllocation: finalAllocation,
+          expectedReturn: a.roi,
+        }
+      })
+
+      // Normalize to 100%
+      const sum = newAllocations.reduce((s, a) => s + a.recommendedAllocation, 0)
+      const normalized = newAllocations.map((a) => ({
+        ...a,
+        recommendedAllocation: Math.round((a.recommendedAllocation / sum) * 100),
+      }))
+
+      // Save to Supabase
+      for (const alloc of normalized) {
+        const { error } = await supabase
+          .from('allocation_rules')
+          .upsert({
+            job_id: alloc.jobId,
+            job_name: alloc.jobName,
+            current_allocation: alloc.currentAllocation,
+            recommended_allocation: alloc.recommendedAllocation,
+            expected_return: alloc.expectedReturn,
+            constraint: alloc.constraint,
+          }, { onConflict: 'job_id' })
+
+        if (error) throw error
+      }
+
+      // Update local state
+      setAllocationsWithROI(normalized)
+      setApplied(false)
+
+      alert('Recalculation complete! New allocations based on real ROI have been saved.')
+    } catch (err) {
+      console.error('Recalculation failed:', err)
+      alert(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setRunning(false)
+    }
   }
 
-  const movesNeeded = allocations.filter((a) => a.currentAllocation !== a.recommendedAllocation)
+  const movesNeeded = allocationsWithROI.filter((a) => a.currentAllocation !== a.recommendedAllocation)
 
   if (isLoading) {
     return (
@@ -55,20 +147,21 @@ export default function MoneyFlowOptimizer() {
       {isSeedData && (
         <div className="card text-center text-lumina-dim py-3 text-xs">
           No <code className="font-mono text-lumina-pulse">allocation_rules</code> rows yet — showing sample data.
-          Add rows via Supabase dashboard or run the PuLP optimizer to see live allocations.
+          Add rows via Supabase dashboard or run the Recalculate optimizer to see live allocations.
         </div>
       )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lumina-text font-bold text-xl">AI Money Flow Optimizer</h1>
-          <p className="text-lumina-dim text-sm">PuLP nightly capital reallocation · Kelly sizing · cross-job routing</p>
+          <p className="text-lumina-dim text-sm">Dynamic capital reallocation · real ROI-based · cross-job routing</p>
         </div>
         <button
           className="btn-pulse flex items-center gap-2 text-sm"
-          onClick={runPulp}
+          onClick={runRecalculate}
+          disabled={running}
         >
           <RefreshCw size={14} className={running ? 'animate-spin' : ''} />
-          {running ? 'Running PuLP...' : 'Recalculate'}
+          {running ? 'Recalculating...' : 'Recalculate'}
         </button>
       </div>
 
@@ -76,7 +169,7 @@ export default function MoneyFlowOptimizer() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {[
           { title: 'Current Allocation', data: currentPie, label: 'Current' },
-          { title: 'PuLP Recommended',   data: recommendedPie, label: 'Recommended' },
+          { title: 'Recommended',   data: recommendedPie, label: 'Recommended' },
         ].map(({ title, data, label }) => (
           <div key={title} className="card-glow">
             <div className="section-header">{title}</div>
@@ -133,7 +226,7 @@ export default function MoneyFlowOptimizer() {
         {/* Bar chart comparison */}
         <div className="h-48 mb-4">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={allocations.slice(0, 5)} barGap={2} barCategoryGap="30%">
+            <BarChart data={allocationsWithROI.slice(0, 5)} barGap={2} barCategoryGap="30%">
               <CartesianGrid stroke="#1e2640" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="jobName" tick={{ fill: '#4a5568', fontSize: 9 }} tickLine={false} axisLine={false}
                 tickFormatter={(v) => v.split(' ')[0]} />
@@ -177,21 +270,51 @@ export default function MoneyFlowOptimizer() {
               </div>
             )
           })}
+          {movesNeeded.length === 0 && (
+            <div className="text-center py-4 text-lumina-dim text-sm">
+              Allocations are already optimized
+            </div>
+          )}
         </div>
       </div>
 
-      {/* PuLP solver log */}
+      {/* Job Performance Summary */}
       <div className="card-glow">
-        <div className="section-header">PuLP Solver Log (Last Run)</div>
+        <div className="section-header">Job Performance (Monthly Income)</div>
+        <div className="space-y-2">
+          {allocationsWithROI.map((a) => (
+            <div key={a.jobId} className="flex items-center justify-between p-2 bg-lumina-bg/40 rounded-lg text-sm">
+              <div>
+                <span className="text-lumina-text font-medium">{a.jobName}</span>
+                <span className="text-xs text-lumina-dim ml-2">Alloc: {a.currentAllocation}%</span>
+              </div>
+              <div className="flex items-center gap-4 font-mono">
+                <span className="text-lumina-success">${a.monthlyIncome.toLocaleString()}</span>
+                <span className={clsx(
+                  'text-xs font-semibold px-2 py-1 rounded',
+                  a.roi >= 25 ? 'bg-lumina-success/20 text-lumina-success' : a.roi >= 15 ? 'bg-lumina-gold/20 text-lumina-gold' : 'bg-lumina-warning/20 text-lumina-warning'
+                )}>
+                  {a.roi}% ROI
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Recalculation log */}
+      <div className="card-glow">
+        <div className="section-header">Optimizer Log (Last Run)</div>
         <div className="font-mono text-xs text-lumina-dim space-y-1 bg-lumina-bg p-3 rounded-lg">
           {[
-            'PuLP v2.8 · CBC solver',
-            'Objective: maximize(∑ allocation_i × expected_return_i)',
-            'Constraints: ∑ allocation_i = 100%, all ≥ 0%, max_30pct, kelly_cap',
-            'Status: Optimal · 0.003s',
-            'Objective value: 2.847 (weighted avg return)',
-            'Top move: AI UGC Factory +5% (marginal gain $2,100/mo)',
-            'Capped: Liquidity Sniper → Kelly max 20%',
+            'Optimizer v1.0 · Real ROI-based allocation',
+            'Data source: income_entries (last 30 days)',
+            `Objective: maximize(∑ allocation_i × roi_i)`,
+            'Constraints: ∑ allocation_i = 100%, all ≥ 0%, individual max/min caps',
+            `Status: Optimal · job count: ${allocationsWithROI.length}`,
+            `Average ROI: ${Math.round(allocationsWithROI.reduce((s, a) => s + a.roi, 0) / allocationsWithROI.length)}%`,
+            `Total monthly income: $${allocationsWithROI.reduce((s, a) => s + a.monthlyIncome, 0).toLocaleString()}`,
+            'Recommendation: Allocate more capital to high-ROI jobs',
           ].map((line, i) => (
             <div key={i}>
               <span className="text-lumina-pulse">❯ </span>

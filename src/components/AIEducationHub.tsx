@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   BookOpen,
   Zap,
@@ -26,6 +26,7 @@ interface Course {
   progress: number // 0-100
   url: string
   icon: string // first letter or emoji
+  benefits: string[] // 3 specific benefits
 }
 
 interface LearningPath {
@@ -45,19 +46,8 @@ interface Skill {
   level: 'Beginner' | 'Intermediate' | 'Advanced'
 }
 
-// ── COURSE DATA ────────────────────────────────────────────────────────────
+// ── COURSE DATA (Reordered: Easiest/Shortest to Hardest/Longest) ──────────
 const COURSES: Course[] = [
-  {
-    id: 'anthropic-1',
-    provider: 'Anthropic',
-    name: 'Prompt Engineering Fundamentals',
-    category: 'Fundamentals',
-    hours: 8,
-    difficulty: 'Beginner',
-    progress: 45,
-    url: 'https://anthropic.skilljar.com',
-    icon: 'A',
-  },
   {
     id: 'google-1',
     provider: 'Google',
@@ -68,72 +58,11 @@ const COURSES: Course[] = [
     progress: 0,
     url: 'https://grow.google/ai',
     icon: 'G',
-  },
-  {
-    id: 'meta-1',
-    provider: 'Meta',
-    name: 'Building with AI',
-    category: 'Advanced',
-    hours: 12,
-    difficulty: 'Intermediate',
-    progress: 0,
-    url: 'https://ai.meta.com/resources',
-    icon: 'M',
-  },
-  {
-    id: 'nvidia-1',
-    provider: 'NVIDIA',
-    name: 'Deep Learning Fundamentals',
-    category: 'Fundamentals',
-    hours: 16,
-    difficulty: 'Intermediate',
-    progress: 25,
-    url: 'https://developer.nvidia.com/training',
-    icon: 'N',
-  },
-  {
-    id: 'microsoft-1',
-    provider: 'Microsoft',
-    name: 'Azure AI Services',
-    category: 'Advanced',
-    hours: 14,
-    difficulty: 'Intermediate',
-    progress: 0,
-    url: 'https://learn.microsoft.com/training',
-    icon: 'M',
-  },
-  {
-    id: 'openai-1',
-    provider: 'OpenAI',
-    name: 'ChatGPT & API Mastery',
-    category: 'Advanced',
-    hours: 10,
-    difficulty: 'Intermediate',
-    progress: 60,
-    url: 'https://academy.openai.com',
-    icon: 'O',
-  },
-  {
-    id: 'ibm-1',
-    provider: 'IBM',
-    name: 'AI for Enterprise',
-    category: 'Advanced',
-    hours: 18,
-    difficulty: 'Advanced',
-    progress: 0,
-    url: 'https://skillsbuild.org',
-    icon: 'I',
-  },
-  {
-    id: 'aws-1',
-    provider: 'AWS',
-    name: 'Machine Learning Foundations',
-    category: 'Fundamentals',
-    hours: 20,
-    difficulty: 'Intermediate',
-    progress: 15,
-    url: 'https://skillbuilder.aws',
-    icon: 'A',
+    benefits: [
+      'Understand AI basics and real-world applications',
+      'Learn how to leverage AI tools in your daily work',
+      'Get certified by Google in AI fundamentals'
+    ],
   },
   {
     id: 'deeplearning-1',
@@ -145,28 +74,27 @@ const COURSES: Course[] = [
     progress: 0,
     url: 'https://deeplearning.ai',
     icon: 'D',
+    benefits: [
+      'Complete bite-sized AI courses in weeks, not months',
+      'Learn from industry experts at the forefront of AI',
+      'Build practical AI projects with hands-on labs'
+    ],
   },
   {
-    id: 'huggingface-1',
-    provider: 'Hugging Face',
-    name: 'NLP & Transformers',
-    category: 'Advanced',
-    hours: 15,
-    difficulty: 'Advanced',
+    id: 'anthropic-1',
+    provider: 'Anthropic',
+    name: 'Prompt Engineering Fundamentals',
+    category: 'Fundamentals',
+    hours: 8,
+    difficulty: 'Beginner',
     progress: 0,
-    url: 'https://huggingface.co/learn',
-    icon: 'H',
-  },
-  {
-    id: 'fastai-1',
-    provider: 'FastAI',
-    name: 'Practical Deep Learning',
-    category: 'Advanced',
-    hours: 24,
-    difficulty: 'Intermediate',
-    progress: 0,
-    url: 'https://course.fast.ai',
-    icon: 'F',
+    url: 'https://anthropic.skilljar.com',
+    icon: 'A',
+    benefits: [
+      'Master how to write effective prompts for any AI model',
+      'Understand Claude\'s capabilities and best practices',
+      'Learn advanced techniques to optimize AI responses'
+    ],
   },
   {
     id: 'kaggle-1',
@@ -175,75 +103,30 @@ const COURSES: Course[] = [
     category: 'Fundamentals',
     hours: 10,
     difficulty: 'Beginner',
-    progress: 30,
+    progress: 0,
     url: 'https://kaggle.com/learn',
     icon: 'K',
+    benefits: [
+      'Learn ML algorithms and when to use each one',
+      'Practice with real datasets and competitions',
+      'Join a community of 20M+ data scientists'
+    ],
   },
   {
-    id: 'stanford-1',
-    provider: 'Stanford',
-    name: 'CS231N - Convolutional Neural Networks',
-    category: 'Specialized',
-    hours: 40,
-    difficulty: 'Advanced',
-    progress: 0,
-    url: 'https://cs231n.stanford.edu',
-    icon: 'S',
-  },
-  {
-    id: 'mit-1',
-    provider: 'MIT',
-    name: 'OpenCourseWare - AI Courses',
-    category: 'Advanced',
-    hours: 36,
-    difficulty: 'Advanced',
-    progress: 0,
-    url: 'https://ocw.mit.edu',
-    icon: 'M',
-  },
-  {
-    id: 'fullstack-1',
-    provider: 'Full Stack DL',
-    name: 'Full Stack Deep Learning Course',
-    category: 'Specialized',
-    hours: 32,
-    difficulty: 'Advanced',
-    progress: 0,
-    url: 'https://fullstackdeeplearning.com',
-    icon: 'F',
-  },
-  {
-    id: 'deepmind-1',
-    provider: 'DeepMind',
-    name: 'DeepMind Learning Resources',
-    category: 'Advanced',
-    hours: 25,
-    difficulty: 'Advanced',
-    progress: 0,
-    url: 'https://deepmind.com/learning-resources',
-    icon: 'D',
-  },
-  {
-    id: 'openai-cookbook',
-    provider: 'OpenAI',
-    name: 'OpenAI Cookbook - Code Examples',
-    category: 'Specialized',
-    hours: 8,
+    id: 'nvidia-1',
+    provider: 'NVIDIA',
+    name: 'Deep Learning Fundamentals',
+    category: 'Fundamentals',
+    hours: 16,
     difficulty: 'Intermediate',
-    progress: 70,
-    url: 'https://github.com/openai/openai-cookbook',
-    icon: 'O',
-  },
-  {
-    id: 'papers-1',
-    provider: 'Papers with Code',
-    name: 'ML Papers & Implementations',
-    category: 'Specialized',
-    hours: 28,
-    difficulty: 'Advanced',
     progress: 0,
-    url: 'https://paperswithcode.com',
-    icon: 'P',
+    url: 'https://developer.nvidia.com/training',
+    icon: 'N',
+    benefits: [
+      'Understand neural networks and deep learning architectures',
+      'Learn GPU acceleration for 100x faster training',
+      'Build production-ready deep learning models'
+    ],
   },
   {
     id: 'assemblyai-1',
@@ -255,6 +138,11 @@ const COURSES: Course[] = [
     progress: 0,
     url: 'https://assemblyai.com/blog',
     icon: 'A',
+    benefits: [
+      'Master speech-to-text and audio understanding',
+      'Build voice interfaces and audio processing apps',
+      'Integrate AI-powered audio features into products'
+    ],
   },
   {
     id: 'pinecone-1',
@@ -263,9 +151,206 @@ const COURSES: Course[] = [
     category: 'Specialized',
     hours: 10,
     difficulty: 'Intermediate',
-    progress: 35,
+    progress: 0,
     url: 'https://learn.pinecone.io',
     icon: 'P',
+    benefits: [
+      'Learn retrieval-augmented generation (RAG) patterns',
+      'Build semantic search and recommendation systems',
+      'Scale AI applications to millions of documents'
+    ],
+  },
+  {
+    id: 'openai-cookbook',
+    provider: 'OpenAI',
+    name: 'OpenAI Cookbook - Code Examples',
+    category: 'Specialized',
+    hours: 8,
+    difficulty: 'Intermediate',
+    progress: 0,
+    url: 'https://github.com/openai/openai-cookbook',
+    icon: 'O',
+    benefits: [
+      'Access production code examples from OpenAI engineers',
+      'Learn best practices for API integration',
+      'Accelerate development with proven patterns'
+    ],
+  },
+  {
+    id: 'meta-1',
+    provider: 'Meta',
+    name: 'Building with AI',
+    category: 'Advanced',
+    hours: 12,
+    difficulty: 'Intermediate',
+    progress: 0,
+    url: 'https://ai.meta.com/resources',
+    icon: 'M',
+    benefits: [
+      'Learn from Meta\'s AI research and frameworks',
+      'Build applications with LLaMA and other models',
+      'Understand large-scale AI infrastructure'
+    ],
+  },
+  {
+    id: 'microsoft-1',
+    provider: 'Microsoft',
+    name: 'Azure AI Services',
+    category: 'Advanced',
+    hours: 14,
+    difficulty: 'Intermediate',
+    progress: 0,
+    url: 'https://learn.microsoft.com/training',
+    icon: 'M',
+    benefits: [
+      'Deploy AI models at scale with Azure cloud',
+      'Learn enterprise-grade AI infrastructure',
+      'Master responsible AI and governance practices'
+    ],
+  },
+  {
+    id: 'openai-1',
+    provider: 'OpenAI',
+    name: 'ChatGPT & API Mastery',
+    category: 'Advanced',
+    hours: 10,
+    difficulty: 'Intermediate',
+    progress: 0,
+    url: 'https://academy.openai.com',
+    icon: 'O',
+    benefits: [
+      'Monetize GPT with API and build AI products',
+      'Learn advanced fine-tuning and optimization',
+      'Scale to thousands of users profitably'
+    ],
+  },
+  {
+    id: 'fastai-1',
+    provider: 'FastAI',
+    name: 'Practical Deep Learning',
+    category: 'Advanced',
+    hours: 24,
+    difficulty: 'Intermediate',
+    progress: 0,
+    url: 'https://course.fast.ai',
+    icon: 'F',
+    benefits: [
+      'Build state-of-the-art deep learning models in weeks',
+      'Learn from top researchers at University of San Francisco',
+      'Compete in Kaggle competitions with confidence'
+    ],
+  },
+  {
+    id: 'huggingface-1',
+    provider: 'Hugging Face',
+    name: 'NLP & Transformers',
+    category: 'Advanced',
+    hours: 15,
+    difficulty: 'Advanced',
+    progress: 0,
+    url: 'https://huggingface.co/learn',
+    icon: 'H',
+    benefits: [
+      'Master transformer architectures and attention mechanisms',
+      'Fine-tune BERT, GPT, and other state-of-the-art models',
+      'Deploy NLP models with production-ready frameworks'
+    ],
+  },
+  {
+    id: 'ibm-1',
+    provider: 'IBM',
+    name: 'AI for Enterprise',
+    category: 'Advanced',
+    hours: 18,
+    difficulty: 'Advanced',
+    progress: 0,
+    url: 'https://skillsbuild.org',
+    icon: 'I',
+    benefits: [
+      'Build enterprise AI solutions for Fortune 500 companies',
+      'Learn responsible AI, ethics, and compliance',
+      'Master MLOps and production AI pipelines'
+    ],
+  },
+  {
+    id: 'stanford-1',
+    provider: 'Stanford',
+    name: 'CS231N - Convolutional Neural Networks',
+    category: 'Specialized',
+    hours: 40,
+    difficulty: 'Advanced',
+    progress: 0,
+    url: 'https://cs231n.stanford.edu',
+    icon: 'S',
+    benefits: [
+      'Learn computer vision from Stanford professors',
+      'Understand CNN architectures: ResNet, VGG, Inception',
+      'Build real-world vision applications'
+    ],
+  },
+  {
+    id: 'mit-1',
+    provider: 'MIT',
+    name: 'OpenCourseWare - AI Courses',
+    category: 'Advanced',
+    hours: 36,
+    difficulty: 'Advanced',
+    progress: 0,
+    url: 'https://ocw.mit.edu',
+    icon: 'M',
+    benefits: [
+      'Learn from MIT researchers at the cutting edge',
+      'Master theoretical foundations of AI and ML',
+      'Access problem sets and exams from MIT classes'
+    ],
+  },
+  {
+    id: 'fullstack-1',
+    provider: 'Full Stack DL',
+    name: 'Full Stack Deep Learning Course',
+    category: 'Specialized',
+    hours: 32,
+    difficulty: 'Advanced',
+    progress: 0,
+    url: 'https://fullstackdeeplearning.com',
+    icon: 'F',
+    benefits: [
+      'Learn to build, train, and deploy ML systems end-to-end',
+      'Master data pipelines, MLOps, and production systems',
+      'Get hired by top AI companies'
+    ],
+  },
+  {
+    id: 'deepmind-1',
+    provider: 'DeepMind',
+    name: 'DeepMind Learning Resources',
+    category: 'Advanced',
+    hours: 25,
+    difficulty: 'Advanced',
+    progress: 0,
+    url: 'https://deepmind.com/learning-resources',
+    icon: 'D',
+    benefits: [
+      'Learn from DeepMind researchers who created AlphaGo',
+      'Understand advanced RL and game-playing AI',
+      'Access research papers and implementation guides'
+    ],
+  },
+  {
+    id: 'papers-1',
+    provider: 'Papers with Code',
+    name: 'ML Papers & Implementations',
+    category: 'Specialized',
+    hours: 28,
+    difficulty: 'Advanced',
+    progress: 0,
+    url: 'https://paperswithcode.com',
+    icon: 'P',
+    benefits: [
+      'Study cutting-edge ML research papers with code',
+      'Understand SOTA implementations across domains',
+      'Contribute to open-source ML projects'
+    ],
   },
 ]
 
@@ -477,7 +562,7 @@ function LearningPathCard({ path }: { path: LearningPath }) {
   )
 }
 
-function CourseCard({ course }: { course: Course }) {
+function CourseCard({ course, onProgressUpdate }: { course: Course; onProgressUpdate: (id: string, progress: number) => void }) {
   return (
     <div className="bg-lumina-card border border-lumina-border rounded-lg p-4 hover:border-lumina-pulse/50 transition">
       <div className="flex items-start gap-3 mb-3">
@@ -510,6 +595,19 @@ function CourseCard({ course }: { course: Course }) {
         </div>
       </div>
 
+      {/* Benefits */}
+      <div className="mb-4 p-2 bg-lumina-bg/50 rounded border border-lumina-border/50">
+        <p className="text-xs font-semibold text-lumina-muted mb-2">Key Benefits:</p>
+        <ul className="space-y-1">
+          {course.benefits.map((benefit, idx) => (
+            <li key={idx} className="text-xs text-lumina-text flex gap-1.5">
+              <CheckCircle size={12} className="text-lumina-success flex-shrink-0 mt-0.5" />
+              <span>{benefit}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <div className="flex items-center gap-2 pt-3 border-t border-lumina-border">
         <a
           href={course.url}
@@ -519,24 +617,24 @@ function CourseCard({ course }: { course: Course }) {
         >
           {course.progress > 0 ? 'Continue' : 'Start'}
         </a>
-        <a
-          href={course.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-3 py-2 bg-lumina-border hover:bg-lumina-border/50 text-lumina-dim rounded transition"
+        <button
+          onClick={() => onProgressUpdate(course.id, 100)}
+          disabled={course.progress === 100}
+          className={clsx(
+            'px-3 py-2 rounded font-semibold text-xs transition',
+            course.progress === 100
+              ? 'bg-lumina-success/20 text-lumina-success'
+              : 'bg-lumina-border hover:bg-lumina-border/50 text-lumina-dim'
+          )}
         >
-          <ExternalLink size={14} />
-        </a>
+          {course.progress === 100 ? '✓ Done' : 'Mark Done'}
+        </button>
       </div>
     </div>
   )
 }
 
 function SkillToIncomeRow({ skill }: { skill: Skill }) {
-  const courseList = COURSES.slice(0, skill.courses)
-    .map(c => c.provider)
-    .join(', ')
-
   return (
     <tr className="border-b border-lumina-border hover:bg-lumina-surface/50 transition">
       <td className="px-4 py-3">
@@ -570,8 +668,8 @@ function SkillToIncomeRow({ skill }: { skill: Skill }) {
 }
 
 function WeeklyGoalTracker() {
-  const weeklyProgress = 12 // hours this week
-  const weeklyTarget = 5 // target hours
+  const weeklyProgress = 12
+  const weeklyTarget = 5
   const progressPercent = Math.min((weeklyProgress / weeklyTarget) * 100, 100)
   const streak = 4
 
@@ -625,9 +723,49 @@ export default function AIEducationHub() {
   const [selectedCategory, setSelectedCategory] = useState<
     'All' | 'Fundamentals' | 'Advanced' | 'Specialized'
   >('All')
+  const [courses, setCourses] = useState<Course[]>(COURSES)
+
+  // Load progress from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('lumina-course-progress')
+      if (saved) {
+        const progressMap = JSON.parse(saved)
+        setCourses(prev =>
+          prev.map(course => ({
+            ...course,
+            progress: progressMap[course.id] ?? 0,
+          }))
+        )
+      }
+    } catch (error) {
+      console.error('Error loading course progress from localStorage:', error)
+    }
+  }, [])
+
+  // Save progress to localStorage whenever courses change
+  useEffect(() => {
+    try {
+      const progressMap = courses.reduce((acc, course) => {
+        acc[course.id] = course.progress
+        return acc
+      }, {} as Record<string, number>)
+      localStorage.setItem('lumina-course-progress', JSON.stringify(progressMap))
+    } catch (error) {
+      console.error('Error saving course progress to localStorage:', error)
+    }
+  }, [courses])
+
+  const handleProgressUpdate = (courseId: string, progress: number) => {
+    setCourses(prev =>
+      prev.map(course =>
+        course.id === courseId ? { ...course, progress } : course
+      )
+    )
+  }
 
   const filteredCourses =
-    selectedCategory === 'All' ? COURSES : COURSES.filter(c => c.category === selectedCategory)
+    selectedCategory === 'All' ? courses : courses.filter(c => c.category === selectedCategory)
 
   return (
     <div className="min-h-screen bg-lumina-bg p-6">
@@ -730,7 +868,11 @@ export default function AIEducationHub() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredCourses.map(course => (
-              <CourseCard key={course.id} course={course} />
+              <CourseCard
+                key={course.id}
+                course={course}
+                onProgressUpdate={handleProgressUpdate}
+              />
             ))}
           </div>
         </section>

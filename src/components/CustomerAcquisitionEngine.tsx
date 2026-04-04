@@ -17,6 +17,7 @@ import {
   ArrowUpRight,
   Lightbulb,
   Loader,
+  Plus,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -44,81 +45,91 @@ interface ContentMetric {
   color: string;
 }
 
-// Mock data
-const mockClients: Client[] = [
+// Realistic client data for AI consulting, web dev, and ad pack business
+const DEFAULT_CLIENTS: Client[] = [
   {
     id: '1',
-    name: 'Bright Smile Dental',
-    niche: 'Dentistry',
-    monthlyFee: 4500,
-    adSpend: 2500,
-    cac: 85,
-    customersAcquiredWeek: 8,
+    name: 'SmileCare Dental Studio',
+    niche: 'Dental Practices',
+    monthlyFee: 5500,
+    adSpend: 2800,
+    cac: 92,
+    customersAcquiredWeek: 9,
     status: 'ads',
   },
   {
     id: '2',
-    name: 'PowerFit Gym',
-    niche: 'Fitness',
-    monthlyFee: 3500,
-    adSpend: 1800,
-    cac: 72,
-    customersAcquiredWeek: 6,
-    status: 'content',
-  },
-  {
-    id: '3',
-    name: 'Radiance Med Spa',
-    niche: 'Med Spa',
-    monthlyFee: 5000,
-    adSpend: 3000,
-    cac: 95,
-    customersAcquiredWeek: 10,
+    name: 'Radiance Med Spa & Wellness',
+    niche: 'Med Spas',
+    monthlyFee: 6200,
+    adSpend: 3500,
+    cac: 110,
+    customersAcquiredWeek: 12,
     status: 'ads',
   },
   {
+    id: '3',
+    name: 'Elite Fitness Center',
+    niche: 'Gyms/Fitness',
+    monthlyFee: 4800,
+    adSpend: 2200,
+    cac: 85,
+    customersAcquiredWeek: 8,
+    status: 'content',
+  },
+  {
     id: '4',
-    name: 'Elite Roofing',
-    niche: 'Roofing',
-    monthlyFee: 3000,
+    name: 'ProRoof Solutions',
+    niche: 'Roofing Companies',
+    monthlyFee: 3800,
     adSpend: 1500,
-    cac: 65,
-    customersAcquiredWeek: 4,
+    cac: 68,
+    customersAcquiredWeek: 5,
     status: 'research',
   },
   {
     id: '5',
-    name: 'OrthoSmile Dental',
-    niche: 'Orthodontics',
-    monthlyFee: 4000,
-    adSpend: 2200,
-    cac: 78,
-    customersAcquiredWeek: 7,
+    name: 'Apex Real Estate Group',
+    niche: 'Real Estate Agents',
+    monthlyFee: 5200,
+    adSpend: 2900,
+    cac: 95,
+    customersAcquiredWeek: 10,
     status: 'prospect',
+  },
+  {
+    id: '6',
+    name: 'The Urban Kitchen',
+    niche: 'Restaurants',
+    monthlyFee: 2800,
+    adSpend: 1200,
+    cac: 55,
+    customersAcquiredWeek: 4,
+    status: 'billing',
   },
 ];
 
-const mockNiches = ['Dentistry', 'Fitness', 'Med Spa', 'Roofing', 'HVAC', 'Plumbing'];
+const mockNiches = ['Dental Practices', 'Med Spas', 'Gyms/Fitness', 'Roofing Companies', 'Real Estate Agents', 'Restaurants'];
 
 const mockCompetitors: CompetitorData[] = [
-  { name: 'SmileBoost Dental Marketing', strength: 'Email campaigns, high conversion' },
-  { name: 'LocalFit Gym Ads', strength: 'Video content, TikTok native' },
-  { name: 'BeautyAI Agency', strength: 'Instagram Reels, influencer partnerships' },
+  { name: 'LocalSmile Dental Marketing', strength: 'Google Ads, lead generation, high CAC' },
+  { name: 'FitTech Social Agency', strength: 'Instagram stories, basic engagement' },
+  { name: 'RealtorBoost Media', strength: 'Real estate MLS integration, map ads' },
 ];
 
 const mockAudience = {
-  ageRange: '25-54',
-  interests: ['Cosmetic procedures', 'Wellness', 'Self-care', 'Health trends'],
-  income: '$75K-$200K',
-  platform: 'Instagram, TikTok, YouTube Shorts',
+  ageRange: '28-65',
+  interests: ['Professional services', 'Local business', 'Customer acquisition', 'Lead generation', 'Growth'],
+  income: '$80K-$500K+',
+  platform: 'Google Ads, Facebook, LinkedIn',
 };
 
 const mockContentThemes = [
+  'Case Studies & Success Stories',
+  'Client Results & ROI',
   'Before & After Transformations',
-  'Expert Tips & Education',
-  'Client Testimonials',
-  'Limited-Time Offers',
-  'Behind-the-Scenes',
+  'Educational Content & Industry Tips',
+  'Limited-Time Offers & Urgency',
 ];
 
 const mockAutomationPipeline = [
@@ -492,11 +503,11 @@ const ContentFactory: React.FC = () => {
 };
 
 // Revenue Dashboard Component
-const RevenueDashboard: React.FC = () => {
-  const totalClients = mockClients.length;
-  const monthlyRecurringRevenue = mockClients.reduce((sum, c) => sum + c.monthlyFee, 0);
+const RevenueDashboard: React.FC<{ clients: Client[] }> = ({ clients }) => {
+  const totalClients = clients.length;
+  const monthlyRecurringRevenue = clients.reduce((sum, c) => sum + c.monthlyFee, 0);
   const avgRevenuePerClient = Math.round(monthlyRecurringRevenue / totalClients);
-  const totalCustomersAcquired = mockClients.reduce((sum, c) => sum + c.customersAcquiredWeek, 0);
+  const totalCustomersAcquired = clients.reduce((sum, c) => sum + c.customersAcquiredWeek, 0);
 
   const revenueMetrics = [
     {
@@ -548,45 +559,63 @@ const RevenueDashboard: React.FC = () => {
 
       {/* Client Table */}
       <div className="mb-6">
-        <h3 className="text-sm font-semibold text-lumina-text mb-4">Client Details</h3>
-        <div className="border border-lumina-border rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-lumina-bg border-b border-lumina-border">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-lumina-text">Client Details</h3>
+          <button className="btn-pulse px-3 py-1.5 text-xs flex items-center gap-1">
+            <Plus className="w-4 h-4" />
+            Add Client
+          </button>
+        </div>
+        <div className="border border-lumina-border rounded-lg overflow-x-auto">
+          <table className="w-full min-w-max">
+            <thead className="bg-lumina-bg border-b border-lumina-border sticky top-0">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-lumina-text">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-lumina-text whitespace-nowrap">
                   Name
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-lumina-text">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-lumina-text whitespace-nowrap">
                   Niche
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-lumina-text">
+                <th className="px-4 py-3 text-right text-xs font-semibold text-lumina-text whitespace-nowrap">
                   Monthly Fee
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-lumina-text">
+                <th className="px-4 py-3 text-right text-xs font-semibold text-lumina-text whitespace-nowrap">
+                  Ad Spend
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-lumina-text whitespace-nowrap">
+                  CAC
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-lumina-text whitespace-nowrap">
                   Status
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-lumina-text">
-                  Acquired
+                <th className="px-4 py-3 text-right text-xs font-semibold text-lumina-text whitespace-nowrap">
+                  Acquired/Wk
                 </th>
               </tr>
             </thead>
             <tbody>
-              {mockClients.map((client, idx) => (
+              {clients.map((client, idx) => (
                 <tr
                   key={client.id}
                   className={clsx(
                     'border-b border-lumina-border hover:bg-lumina-surface transition-colors',
-                    idx === mockClients.length - 1 && 'border-b-0'
+                    idx === clients.length - 1 && 'border-b-0'
                   )}
                 >
-                  <td className="px-4 py-3 text-sm text-lumina-text font-medium">
+                  <td className="px-4 py-3 text-sm text-lumina-text font-medium whitespace-nowrap">
                     {client.name}
                   </td>
-                  <td className="px-4 py-3 text-sm text-lumina-muted">{client.niche}</td>
-                  <td className="px-4 py-3 text-sm text-right text-lumina-pulse font-semibold">
+                  <td className="px-4 py-3 text-sm text-lumina-muted whitespace-nowrap">{client.niche}</td>
+                  <td className="px-4 py-3 text-sm text-right text-lumina-pulse font-semibold whitespace-nowrap">
                     ${(client.monthlyFee / 1000).toFixed(1)}K
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-sm text-right text-lumina-gold whitespace-nowrap">
+                    ${(client.adSpend / 1000).toFixed(1)}K
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-lumina-muted whitespace-nowrap">
+                    ${client.cac}
+                  </td>
+                  <td className="px-4 py-3 text-center whitespace-nowrap">
                     <span
                       className={clsx(
                         'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
@@ -596,13 +625,15 @@ const RevenueDashboard: React.FC = () => {
                             ? 'bg-lumina-gold/10 text-lumina-gold'
                             : client.status === 'research'
                               ? 'bg-lumina-success/10 text-lumina-success'
+                              : client.status === 'billing'
+                              ? 'bg-lumina-pulse/5 text-lumina-text'
                               : 'bg-lumina-surface text-lumina-muted'
                       )}
                     >
                       {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-right text-lumina-success font-semibold">
+                  <td className="px-4 py-3 text-sm text-right text-lumina-success font-semibold whitespace-nowrap">
                     +{client.customersAcquiredWeek}
                   </td>
                 </tr>
@@ -620,17 +651,16 @@ const RevenueDashboard: React.FC = () => {
             <div className="h-3 bg-lumina-bg border border-lumina-border rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-lumina-pulse to-lumina-gold transition-all"
-                style={{ width: `${(totalClients / 10) * 100}%` }}
+                style={{ width: `${Math.min((totalClients / 15) * 100, 100)}%` }}
               />
             </div>
           </div>
           <span className="text-sm font-semibold text-lumina-text whitespace-nowrap">
-            {totalClients}/10
+            {totalClients}/15
           </span>
         </div>
         <p className="text-xs text-lumina-muted mt-2">
-          {10 - totalClients} slots available. One person managing {totalClients} clients vs.
-          2-3 traditionally.
+          {Math.max(0, 15 - totalClients)} slots available. One person managing {totalClients} clients with AI automation.
         </p>
       </div>
     </div>
@@ -737,13 +767,14 @@ const AIAutomationStatus: React.FC = () => {
 
 // Main Component
 export const CustomerAcquisitionEngine: React.FC = () => {
-  const [selectedNiche, setSelectedNiche] = React.useState('Dentistry');
+  const [selectedNiche, setSelectedNiche] = React.useState('Dental Practices');
+  const [clients, setClients] = React.useState<Client[]>(DEFAULT_CLIENTS);
 
-  const prospectClients = mockClients.filter((c) => c.status === 'prospect');
-  const researchClients = mockClients.filter((c) => c.status === 'research');
-  const contentClients = mockClients.filter((c) => c.status === 'content');
-  const adsClients = mockClients.filter((c) => c.status === 'ads');
-  const billingClients = mockClients.filter((c) => c.status === 'billing');
+  const prospectClients = clients.filter((c) => c.status === 'prospect');
+  const researchClients = clients.filter((c) => c.status === 'research');
+  const contentClients = clients.filter((c) => c.status === 'content');
+  const adsClients = clients.filter((c) => c.status === 'ads');
+  const billingClients = clients.filter((c) => c.status === 'billing');
 
   return (
     <div className="min-h-screen bg-lumina-bg p-6">
@@ -786,7 +817,7 @@ export const CustomerAcquisitionEngine: React.FC = () => {
 
         {/* Revenue & Automation Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <RevenueDashboard />
+          <RevenueDashboard clients={clients} />
           <AIAutomationStatus />
         </div>
       </div>

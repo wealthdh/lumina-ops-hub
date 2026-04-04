@@ -3,7 +3,7 @@
  * Data: live from synergy_links + ops_jobs Supabase tables
  */
 import { useState } from 'react'
-import { GitBranch, AlertTriangle, TrendingUp, X, CheckCircle, Loader } from 'lucide-react'
+import { GitBranch, AlertTriangle, TrendingUp, X, CheckCircle, Loader, Plus } from 'lucide-react'
 import { useSynergies, useToggleSynergy, useJobs } from '../hooks/useSupabaseData'
 import { useUpdateJobStatus } from '../hooks/useJobs'
 import { supabase } from '../lib/supabase'
@@ -18,6 +18,33 @@ const KILL_RECOMMENDATIONS = [
   },
 ]
 
+const POTENTIAL_JOBS = [
+  {
+    id: 'potential-1',
+    name: 'AI Voice Agent Hotline',
+    description: 'Answering service powered by AI voice agents',
+    category: 'ai-ugc' as const,
+    projectedMonthly: 8500,
+    synergyScore: 72,
+  },
+  {
+    id: 'potential-2',
+    name: 'Crypto Arbitrage Bot',
+    description: 'CEX/DEX arbitrage trading bot',
+    category: 'crypto' as const,
+    projectedMonthly: 12200,
+    synergyScore: 65,
+  },
+  {
+    id: 'potential-3',
+    name: 'White-Label SaaS Reseller',
+    description: 'Resell AI tools as white-label solution',
+    category: 'agency' as const,
+    projectedMonthly: 6800,
+    synergyScore: 58,
+  },
+]
+
 export default function SynergyBrain() {
   // ── LIVE from Supabase ────────────────────────────────────────────────────
   const { data: synergies = [], isLoading: synLoading } = useSynergies()
@@ -25,13 +52,17 @@ export default function SynergyBrain() {
   const toggleSynergy = useToggleSynergy()
   const updateStatus = useUpdateJobStatus()
   const [ignoredRecommendations, setIgnoredRecommendations] = useState<string[]>([])
+  const [activatingJob, setActivatingJob] = useState<string | null>(null)
 
   const loading = synLoading || jobsLoading
 
-  const totalSynergyValue = synergies.filter((s) => s.active).reduce((acc, s) => acc + s.value, 0)
+  // Calculate synergy value only from active jobs
+  const activeSynergies = synergies.filter((s) => s.active)
+  const activeJobs = jobs.filter((j) => j.status === 'active' || j.status === 'scaling')
+  const totalSynergyValue = activeSynergies.reduce((acc, s) => acc + s.value, 0)
 
-  // Build radar data from live jobs
-  const radarData = jobs.slice(0, 6).map((j) => ({
+  // Build radar data from live ACTIVE jobs only
+  const radarData = activeJobs.slice(0, 6).map((j) => ({
     subject: j.name.split(' ')[0],
     value:   j.synergyScore,
   }))
@@ -138,7 +169,7 @@ export default function SynergyBrain() {
             </div>
           )}
           <div className="space-y-1.5 mt-2">
-            {jobs.map((j) => (
+            {activeJobs.map((j) => (
               <div key={j.id} className="flex items-center gap-2">
                 <div className="text-xs text-lumina-dim w-32 truncate">{j.name}</div>
                 <div className="flex-1 bg-lumina-bg rounded-full h-1.5 overflow-hidden">
@@ -202,8 +233,8 @@ export default function SynergyBrain() {
       <div className="card-glow">
         <div className="section-header">AI-Discovered Synergy Opportunities</div>
         <div className="space-y-2">
-          {jobs.slice(0, 3).flatMap((jobA, i) => {
-            const jobB = jobs[i + 1]
+          {activeJobs.slice(0, 3).flatMap((jobA, i) => {
+            const jobB = activeJobs[i + 1]
             if (!jobB) return []
             const value = Math.round((jobA.synergyScore + jobB.synergyScore) * 15)
             const conf  = Math.round((jobA.synergyScore + jobB.synergyScore) / 2)
@@ -243,6 +274,99 @@ export default function SynergyBrain() {
               </div>
             )]
           })}
+        </div>
+      </div>
+
+      {/* Potential new jobs to activate */}
+      <div className="card-glow">
+        <div className="section-header">
+          <Plus size={14} />
+          Potential Jobs to Activate
+        </div>
+        <p className="text-xs text-lumina-dim mb-4">
+          Add new revenue streams to your ops portfolio. Click "Activate" to insert into Supabase and auto-create initial tasks.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {POTENTIAL_JOBS.map((pj) => (
+            <div key={pj.id} className="p-4 bg-lumina-bg/60 rounded-lg border border-lumina-border hover:border-lumina-pulse/50 transition-colors">
+              <div className="mb-3">
+                <div className="text-sm font-semibold text-lumina-text mb-1">{pj.name}</div>
+                <p className="text-xs text-lumina-dim">{pj.description}</p>
+              </div>
+              <div className="space-y-2 mb-4 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-lumina-dim">Projected:</span>
+                  <span className="text-lumina-success font-mono">${pj.projectedMonthly.toLocaleString()}/mo</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-lumina-dim">Synergy Score:</span>
+                  <span className="text-lumina-pulse font-mono">{pj.synergyScore}%</span>
+                </div>
+              </div>
+              <button
+                disabled={activatingJob === pj.id}
+                onClick={async () => {
+                  setActivatingJob(pj.id)
+                  try {
+                    const { data: { user } } = await supabase.auth.getUser()
+                    if (!user) throw new Error('Not authenticated')
+
+                    // Insert new job
+                    const { data: newJob, error: jobError } = await supabase
+                      .from('ops_jobs')
+                      .insert({
+                        user_id: user.id,
+                        name: pj.name,
+                        status: 'pending',
+                        category: pj.category,
+                        monthly_profit: 0,
+                        projected_monthly: pj.projectedMonthly,
+                        synergy_score: pj.synergyScore,
+                        risk_score: 35,
+                        roi: 0,
+                      })
+                      .select()
+                      .single()
+
+                    if (jobError) throw jobError
+                    if (!newJob) throw new Error('No job returned')
+
+                    // Auto-create initial auto_tasks
+                    const tasks = [
+                      { title: 'Set up initial infrastructure', priority: 'high' },
+                      { title: 'Configure monitoring and alerts', priority: 'high' },
+                      { title: 'Test with minimal capital', priority: 'medium' },
+                    ]
+
+                    const { error: tasksError } = await supabase
+                      .from('auto_tasks')
+                      .insert(
+                        tasks.map((t) => ({
+                          job_id: newJob.id,
+                          title: t.title,
+                          priority: t.priority,
+                          status: 'pending',
+                        }))
+                      )
+
+                    if (tasksError) throw tasksError
+
+                    alert(`${pj.name} activated! Initial tasks created.`)
+                    // Force refresh of jobs
+                    window.location.reload()
+                  } catch (err) {
+                    console.error('Failed to activate job:', err)
+                    alert(`Failed to activate: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                  } finally {
+                    setActivatingJob(null)
+                  }
+                }}
+                className="w-full text-xs py-2 rounded-lg bg-lumina-pulse/15 text-lumina-pulse hover:bg-lumina-pulse/25 transition-colors disabled:opacity-50 font-medium"
+              >
+                {activatingJob === pj.id ? 'Activating...' : 'Activate'}
+              </button>
+            </div>
+          ))}
         </div>
       </div>
     </div>

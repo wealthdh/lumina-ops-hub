@@ -42,7 +42,7 @@ function ScoreBar({ score }: { score: number }) {
 // ─── Real Generate Modal — calls edge function ────────────────────────────────
 
 function GenerateModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
-  const [phase,    setPhase]    = useState<'progress' | 'done' | 'error'>('progress')
+  const [phase,    setPhase]    = useState<'progress' | 'review' | 'done' | 'error'>('progress')
   const [progress, setProgress] = useState(0)
   const [result,   setResult]   = useState<{
     proposalUrl?: string | null
@@ -51,6 +51,7 @@ function GenerateModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
     message?:     string
   } | null>(null)
   const [errorMsg, setErrorMsg]  = useState<string | null>(null)
+  const [sentToEmail, setSentToEmail] = useState(false)
 
   const steps = [
     { label: 'AI qualification analysis',  threshold: 15 },
@@ -119,7 +120,7 @@ function GenerateModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
               invoiceUrl:  data.invoiceUrl,
               message:     data.message,
             })
-            setPhase('done')
+            setPhase('review')
           }, 400)
         }
       } catch (err) {
@@ -141,7 +142,7 @@ function GenerateModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="card-glow w-full max-w-lg relative">
         {/* Close */}
-        {phase !== 'progress' && (
+        {(phase !== 'progress' && phase !== 'review') && (
           <button onClick={onClose} className="absolute top-3 right-3 text-lumina-dim hover:text-lumina-text">
             <X size={16} />
           </button>
@@ -196,11 +197,74 @@ function GenerateModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
           </div>
         )}
 
+        {/* Review phase — preview before sending */}
+        {phase === 'review' && result && (
+          <div className="space-y-4">
+            <div className="text-center font-semibold text-sm mb-3 text-lumina-pulse">
+              📋 Preview Before Sending
+            </div>
+
+            <div className="bg-lumina-bg/60 rounded-lg p-4 space-y-3 max-h-96 overflow-y-auto">
+              <p className="text-xs text-lumina-dim">
+                Review the documents below. Once you click "Send", they will be delivered to:
+              </p>
+              <p className="text-sm font-mono text-lumina-pulse font-semibold">{lead.email}</p>
+
+              <div className="space-y-2 border-t border-lumina-border/50 pt-3">
+                {result.proposalUrl && (
+                  <div className="flex items-center gap-2 p-2 bg-lumina-bg rounded">
+                    <FileText size={14} className="text-lumina-pulse flex-shrink-0" />
+                    <span className="text-xs text-lumina-text flex-1">Proposal PDF</span>
+                    <span className="text-xs text-lumina-muted">✓</span>
+                  </div>
+                )}
+                {result.contractUrl && (
+                  <div className="flex items-center gap-2 p-2 bg-lumina-bg rounded">
+                    <FileText size={14} className="text-lumina-gold flex-shrink-0" />
+                    <span className="text-xs text-lumina-text flex-1">Service Contract</span>
+                    <span className="text-xs text-lumina-muted">✓</span>
+                  </div>
+                )}
+                {result.invoiceUrl && (
+                  <div className="flex items-center gap-2 p-2 bg-lumina-bg rounded">
+                    <DollarSign size={14} className="text-lumina-success flex-shrink-0" />
+                    <span className="text-xs text-lumina-text flex-1">Stripe Invoice</span>
+                    <span className="text-xs text-lumina-muted">✓</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                className="btn-ghost flex-1 text-sm bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => {
+                  setPhase('progress')
+                  setProgress(0)
+                  setSentToEmail(false)
+                  setResult(null)
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-pulse flex-1 text-sm bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => {
+                  setSentToEmail(true)
+                  setPhase('done')
+                }}
+              >
+                Send Package
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Done phase — show real document links */}
         {phase === 'done' && result && (
           <div className="space-y-4">
             <div className="text-center text-lumina-success font-semibold text-sm mb-3">
-              ✅ Package ready — sent to {lead.email}
+              ✅ Package {sentToEmail ? 'sent' : 'ready'} — {sentToEmail ? `delivered to ${lead.email}` : 'ready for delivery'}
             </div>
 
             {result.message && (
@@ -489,11 +553,18 @@ function LeadCard({ lead }: { lead: Lead }) {
 
         <div className="flex gap-2 mt-3">
           <button
-            className="btn-pulse text-xs py-1.5 flex-1 flex items-center justify-center gap-1"
+            className="btn-ghost text-xs py-1.5 flex-1 flex items-center justify-center gap-1 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+            onClick={() => setShowModal(true)}
+          >
+            <X size={12} />
+            Cancel
+          </button>
+          <button
+            className="text-xs py-1.5 flex-1 flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
             onClick={() => setShowModal(true)}
           >
             <Send size={12} />
-            {lead.proposalUrl ? 'Re-generate' : 'Generate Package'}
+            {lead.proposalUrl ? 'Re-generate' : 'Generate'}
           </button>
           {lead.invoiceUrl && (
             <a href={lead.invoiceUrl} target="_blank" rel="noreferrer"
