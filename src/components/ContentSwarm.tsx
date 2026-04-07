@@ -1,18 +1,34 @@
 /**
- * AI UGC + Content Swarm Panel
- * Arcads / Kling integration · auto-distribution · SEO optimizer
- * All creatives read live from Supabase `ugc_creatives` table.
- * Generate Creative inserts a real row — no fake data.
+ * AI UGC + Content Swarm Panel â HARDENED PIPELINE
+ *
+ * UGC â Kling â Supabase â Twitter
+ *
+ * Features:
+ * - Visible pipeline status: Generating â Saving â Posting â Complete
+ * - Retry logic (2x) on Kling + Twitter failures
+ * - Supabase realtime auto-refresh after insert
+ * - [UGC] logging at every step
+ * - "Test Pipeline" button for full-flow verification
  */
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { Video, Zap, Globe, TrendingUp, Play, Plus, Search, BarChart2, RefreshCw, ExternalLink, Trash2, Loader2, CheckCircle, AlertCircle, Film } from 'lucide-react'
+import {
+  Video, Zap, Globe, TrendingUp, Play, Plus, Search,
+  ExternalLink, Trash2, Loader2, CheckCircle, AlertCircle,
+  Film, TestTube2, ArrowRight, RefreshCw, XCircle,
+} from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { generateAndSaveCreative, checkKlingApiHealth } from '../lib/ugcApi'
-import { distributeToAll, distributeToSingle, type DistributeResponse } from '../lib/distributeApi'
+import {
+  generateAndSaveCreative, checkKlingApiHealth,
+  type PipelineStatus,
+} from '../lib/ugcApi'
+import {
+  distributeToAll, postToTwitter,
+  type DistributeResponse,
+} from '../lib/distributeApi'
 import clsx from 'clsx'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// âââ Types âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 interface UgcCreative {
   id:                string
   title:             string
@@ -42,8 +58,33 @@ interface SeoKeyword {
   updated_at: string
 }
 
-// ─── Supabase hooks ──────────────────────────────────────────────────────────
+// âââ Logger âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+function ugcLog(msg: string, data?: Record<string, unknown>) {
+  const ts = new Date().toISOString().slice(11, 19)
+  console.log(`[UGC][${ts}] ${msg}`, data ? JSON.stringify(data) : '')
+}
+
+// âââ Supabase hooks with realtime ââââââââââââââââââââââââââââââââââââââââââââ
 function useUgcCreatives() {
+  const qc = useQueryClient()
+
+  // Auto-refresh on realtime INSERT/UPDATE
+  useEffect(() => {
+    const channel = supabase
+      .channel('ugc_creatives_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ugc_creatives' },
+        (payload) => {
+          ugcLog('realtime update', { event: payload.eventType, id: (payload.new as Record<string, unknown>)?.id })
+          qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [qc])
+
   return useQuery<UgcCreative[]>({
     queryKey: ['ugc_creatives'],
     queryFn: async () => {
@@ -52,12 +93,12 @@ function useUgcCreatives() {
         .select('*')
         .order('created_at', { ascending: false })
       if (error) {
-        console.warn('[ContentSwarm] ugc_creatives:', error.message)
+        console.warn('[UGC] ugc_creatives query:', error.message)
         return []
       }
       return data ?? []
     },
-    staleTime: 60_000,
+    staleTime: 30_000,
   })
 }
 
@@ -70,7 +111,7 @@ function useSeoKeywords() {
         .select('*')
         .order('position', { ascending: true, nullsFirst: false })
       if (error) {
-        console.warn('[ContentSwarm] seo_keywords:', error.message)
+        console.warn('[UGC] seo_keywords:', error.message)
         return []
       }
       return data ?? []
@@ -78,333 +119,133 @@ function useSeoKeywords() {
     staleTime: 120_000,
   })
 }
+ËÈ8¥ 8¥ 8¥ Ù[\]HÜX]]H]]][Û8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ [Ý[Û\ÙQÙ[\]PÜX]]J
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
 
-// ─── Generate Creative mutation — inserts row, then fires Kling API ──────────
-function useGenerateCreative() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (opts: {
-      title: string
-      platform: string
-      tool: string
-      prompt?: string
-      duration?: '5' | '10'
-      mode?: 'std' | 'pro'
-      aspect_ratio?: '16:9' | '9:16' | '1:1'
-      onProgress?: (status: string) => void
-    }) => {
-      // 1. Insert a draft row immediately so it shows up in the list
-      const { data: creative, error } = await supabase
-        .from('ugc_creatives')
-        .insert({
-          title:             opts.title,
-          platform:          opts.platform,
-          status:            'draft',
-          views:             0,
-          ctr:               0,
-          roas:              0,
-          tool:              opts.tool,
-          api_provider:      'kling',
-          generation_prompt: opts.prompt || opts.title,
-        })
-        .select()
-        .single()
-      if (error) throw error
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+ÜÎÂ]NÝ[Â]ÜNÝ[ÂÛÛÝ[ÂÛ\ÎÝ[Â\][ÛÎ	ÍIÈ	ÌL	Â[ÙOÎ	ÜÝ	È	ÜÉÂ\ÜXÝÜ][ÏÎ	ÌMIÈ	ÎNMÈ	ÌNIÂÛÙÜ\ÜÏÎ
+Ý]\ÎÝ[ÊHOÚYÛ\[[TÝ]\ÏÎ
+Ý]\Î\[[TÝ]\ÊHOÚYJHOÂYØÓÙÊ	ÜÝ\8 %[Ù\[ÈYÝÉÊBÛÛÝÈ]NÜX]]K\ÜHH]ØZ]Ý\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊB[Ù\
+Â]NÜË]K]ÜNÜË]ÜKÝ]\Î	ÙY	ËY]ÜÎÝØ\ÎÛÛÜËÛÛ\WÜÝY\	ÚÛ[ÉËÙ[\][ÛÜÛ\ÜËÛ\ÜË]KJBÙ[XÝ
 
-      // 2. If tool is Kling, fire the real API (non-blocking for the modal close)
-      if (opts.tool === 'Kling') {
-        // Don't await — let it generate in the background
-        generateAndSaveCreative({
-          creativeId: creative.id,
-          prompt: opts.prompt || opts.title,
-          duration: opts.duration || '5',
-          mode: opts.mode || 'std',
-          aspect_ratio: opts.aspect_ratio || '16:9',
-          onProgress: opts.onProgress,
-        }).then(() => {
-          qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
-        }).catch((err) => {
-          console.error('[ContentSwarm] Kling generation failed:', err)
-          // Mark it as failed/paused in DB
-          supabase
-            .from('ugc_creatives')
-            .update({ status: 'paused' })
-            .eq('id', creative.id)
-            .then(() => qc.invalidateQueries({ queryKey: ['ugc_creatives'] }))
-        })
-      }
+BÚ[ÛJ
+BY
+\ÜHÝÈ\ÜYØÓÙÊ	ÙYÝÈÜX]Y	ËÈYÜX]]KY]NÜX]]K]HJBY
+ÜËÛÛOOH	ÒÛ[ÉÊHÂËÈ\HÛ[ÈÙ[\][Û8 %Õ]XÚYÙH]ØZ]]ÜÝ]\ÈXÚÚ[ÂÙ[\]P[Ø]PÜX]]JÂÜX]]RYÜX]]KYÛ\ÜËÛ\ÜË]K\][ÛÜË\][Û	ÍIË[ÙNÜË[ÙH	ÜÝ	Ë\ÜXÝÜ][ÎÜË\ÜXÝÜ][È	ÌMIËÛÙÜ\ÜÎÜËÛÙÜ\ÜËÛ\[[TÝ]\ÎÜËÛ\[[TÝ]\ËJK[
 
-      return creative
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
-    },
-  })
-}
+HOÂXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBJKØ]Ú
 
-// ─── Delete creative mutation ─────────────────────────────────────────────────
-function useDeleteCreative() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('ugc_creatives').delete().eq('id', id)
-      if (error) throw error
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
-    },
-  })
-}
+\HOÂYØÓÙÊ	Ü\[[H\ÜËÈ\Ü\Y\ÜØYÙKÜX]]RYÜX]]KYJBÝ\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊB\]JÈÝ]\Î	Ü]\ÙY	ÈJB\J	ÚY	ËÜX]]KY
+B[
 
-// ─── Update creative status ───────────────────────────────────────────────────
-function useUpdateCreativeStatus() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: UgcCreative['status'] }) => {
-      const { error } = await supabase.from('ugc_creatives').update({ status }).eq('id', id)
-      if (error) throw error
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
-    },
-  })
-}
+HOXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJJBJBB]\ÜX]]BKÛÝXØÙ\ÜÎ
 
-// ─── Distribute creative mutation ────────────────────────────────────────────
-function useDistributeCreative() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (creativeId: string): Promise<DistributeResponse> => {
-      const result = await distributeToAll(creativeId)
-      // Refresh creatives list so distributed_to array updates
-      qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
-      return result
-    },
-  })
-}
+HOÂXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBKJBB[Ý[Û\ÙQ[]PÜX]]J
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    live:    'badge-success',
-    testing: 'badge-gold',
-    draft:   'badge bg-lumina-muted/20 text-lumina-dim',
-    paused:  'badge-danger',
-  }
-  return <span className={clsx('badge', map[status] ?? 'badge')}>{status}</span>
-}
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+YÝ[ÊHOÂÛÛÝÈ\ÜHH]ØZ]Ý\X\ÙKÛJ	ÝYØ×ØÜX]]\ÉÊK[]J
+K\J	ÚY	ËY
+BY
+\ÜHÝÈ\ÜKÛÝXØÙ\ÜÎ
 
-const DISTRIBUTION_PLATFORMS = [
-  { name: 'TikTok',    icon: '🎵', color: 'border-pink-500/30' },
-  { name: 'Instagram', icon: '📷', color: 'border-purple-500/30' },
-  { name: 'YouTube',   icon: '▶️', color: 'border-red-500/30' },
-  { name: 'LinkedIn',  icon: '💼', color: 'border-blue-500/30' },
-  { name: 'Twitter/X', icon: '✕',  color: 'border-sky-500/30' },
-  { name: 'Facebook',  icon: '📘', color: 'border-blue-600/30' },
-  { name: 'Pinterest', icon: '📌', color: 'border-red-400/30' },
-  { name: 'Threads',   icon: '🧵', color: 'border-gray-400/30' },
-]
+HOÈXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJHKJBB[Ý[Û\ÙU\]PÜX]]TÝ]\Ê
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
 
-const CREATIVE_TEMPLATES = [
-  { title: 'Product Testimonial — AI Voice Clone', platform: 'TikTok', tool: 'Arcads' },
-  { title: 'Problem/Solution Hook — Stock Footage', platform: 'Instagram', tool: 'Kling' },
-  { title: 'Before/After Transformation — UGC Style', platform: 'YouTube', tool: 'Arcads' },
-  { title: 'FAQ Explainer — AI Avatar', platform: 'LinkedIn', tool: 'Kling' },
-  { title: 'Trending Sound Remix — Split Screen', platform: 'TikTok', tool: 'Arcads' },
-  { title: 'Customer Story — Cinematic B-Roll', platform: 'Instagram', tool: 'Kling' },
-  { title: 'Pain Point Callout — Text Overlay', platform: 'Twitter/X', tool: 'Arcads' },
-  { title: 'How-To Tutorial — Screen Recording + VO', platform: 'YouTube', tool: 'Kling' },
-]
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+ÈYÝ]\ÈNÈYÝ[ÎÈÝ]\ÎYØÐÜX]]VÉÜÝ]\É×HJHOÂÛÛÝÈ\ÜHH]ØZ]Ý\X\ÙKÛJ	ÝYØ×ØÜX]]\ÉÊK\]JÈÝ]\ÈJK\J	ÚY	ËY
+BY
+\ÜHÝÈ\ÜKÛÝXØÙ\ÜÎ
 
-const TARGET_KEYWORDS = [
-  'AI video generation',
-  'content automation',
-  'UGC creation',
-  'viral marketing',
-  'creator tools',
-  'AI content swarm',
-  'automated social media',
-  'AI marketing',
-]
+HOÈXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJHKJBB[Ý[Û\ÙQ\ÝX]PÜX]]J
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
 
-// ─── Generate Creative Modal ──────────────────────────────────────────────────
-function GenerateModal({ onClose, onGenerate, isPending }: {
-  onClose: () => void
-  onGenerate: (opts: {
-    title: string; platform: string; tool: string;
-    prompt?: string; duration?: '5' | '10'; mode?: 'std' | 'pro';
-    aspect_ratio?: '16:9' | '9:16' | '1:1'
-  }) => void
-  isPending: boolean
-}) {
-  const [selected, setSelected] = useState(0)
-  const [customTitle, setCustomTitle] = useState('')
-  const [customPrompt, setCustomPrompt] = useState('')
-  const [duration, setDuration] = useState<'5' | '10'>('5')
-  const [mode, setMode] = useState<'std' | 'pro'>('std')
-  const [aspect, setAspect] = useState<'16:9' | '9:16' | '1:1'>('16:9')
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+ÜX]]RYÝ[ÊNÛZ\ÙO\ÝX]T\ÜÛÙOOÂÛÛÝ\Ý[H]ØZ]\ÝX]UÐ[
+ÜX]]RY
+BXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJB]\\Ý[KJBB¼¼RRR A¥Á±¥¹MÑÑÕÌQÉ­È
+½µÁ½¹¹ÐRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR )Õ¹Ñ¥½¸A¥Á±¥¹QÉ­È¡ìÍÑÑÕÌôèìÍÑÑÕÌèA¥Á±¥¹MÑÑÕÌð¹Õ±°ô¤ì(¥ ÍÑÑÕÌñðÍÑÑÕÌ¹ÍÑÀôôô¥±¤ÉÑÕÉ¸¹Õ±°((½¹ÍÐÍÑÁÌèì­äèÍÑÉ¥¹ì±°èÍÑÉ¥¹õmtôl(ì­äè¹ÉÑ¥¹°±°è¹ÉÑ¥¹ô°(ì­äèÍÙ¥¹°±°èMÙ¥¹ô°(ì­äèÁ½ÍÑ¥¹°±°èA½ÍÑ¥¹ô°(ì­äè½µÁ±Ñ°±°è
+½µÁ±Ñô°(t((½¹ÍÐÕÉÉ¹Ñ%àôÍÑÁÌ¹¥¹%¹à¡ÌôøÌ¹­äôôôÍÑÑÕÌ¹ÍÑÀ¤(½¹ÍÐ¥ÍÉÉ½ÈôÍÑÑÕÌ¹ÍÑÀôôôÉÉ½È((ÉÑÕÉ¸ (ñ¥Ø±ÍÍ9µõí±Íà (Éµ±½ÜÀ´Ð½ÉÈµ°´Ð°(¥ÍÉÉ½Èü½ÉÈµ°µÉ´ÔÀÀµÉ´ÔÀÀ¼Ôè½ÉÈµ°µ±Õµ¥¹µÁÕ±Íµ±Õµ¥¹µÁÕ±Í¼Ô(¥ôø(ñ¥Ø±ÍÍ9µô±à¥ÑµÌµ¹ÑÈÀ´Èµ´Ìø(í¥ÍÉÉ½Èü (ña
+¥É±Í¥éõìÄÙô±ÍÍ9µôÑáÐµÉ´ÔÀÀ¼ø(¤èÍÑÑÕÌ¹ÍÑÀôôô½µÁ±Ñü (ñ
+¡­
+¥É±Í¥éõìÄÙô±ÍÍ9µôÑáÐµ±Õµ¥¹µÍÕÍÌ¼ø(¤è (ñ1½ÈÈÍ¥éõìÄÙô±ÍÍ9µôÑáÐµ±Õµ¥¹µÁÕ±Í¹¥µÑµÍÁ¥¸¼ø(¥ô(ñÍÁ¸±ÍÍ9µôÑáÐµÍ´½¹ÐµÍµ¥½±ÑáÐµ±Õµ¥¹µÑáÐø(í¥ÍÉÉ½ÈüA¥Á±¥¹¥±èÍÑÑÕÌ¹ÍÑÀôôô½µÁ±ÑüA¥Á±¥¹
+½µÁ±ÑèA¥Á±¥¹IÕ¹¹¥¹ô(ð½ÍÁ¸ø(ð½¥Øø((ì¼¨MÑÀ¥¹¥Ñ½ÉÌ¨½ô(ñ¥Ø±ÍÍ9µô±à¥ÑµÌµ¹ÑÈÀ´Äµ´Ìø(íÍÑÁÌ¹µÀ ¡Ì°¤¤ôøì(½¹ÍÐ½¹ô¥ÍÉÉ½È¡ÕÉÉ¹Ñ%àø¤ñðÍÑÑÕÌ¹ÍÑÀôôô½µÁ±Ñ¤(½¹ÍÐÑ¥Ùô¥ÍÉÉ½ÈÕÉÉ¹Ñ%àôôô¤ÍÑÑÕÌ¹ÍÑÀôô½µÁ±Ñ(ÉÑÕÉ¸ (ñ¥Ø­äõíÌ¹­åô±ÍÍ9µô±à¥ÑµÌµ¹ÑÈÀ´Ä±à´Äø(ñ¥Ø±ÍÍ9µõí±Íà (±à¥ÑµÌµ¹ÑÈÀ´Ä¸ÔÁà´ÈÁä´ÄÉ½Õ¹µµÑáÐµlÄÁÁát½¹ÐµÍµ¥½±±à´ÄÑáÐµ¹ÑÈ©ÕÍÑ¥äµ¹ÑÈ°(½¹µ±Õµ¥¹µÍÕÍÌ¼ÈÀÑáÐµ±Õµ¥¹µÍÕÍÌ°(Ñ¥Ùµ±Õµ¥¹µÁÕ±Í¼ÈÀÑáÐµ±Õµ¥¹µÁÕ±Í¹¥µÑµÁÕ±Í°(½¹Ñ¥Ùµ±Õµ¥¹µÑáÐµ±Õµ¥¹µµÕÑ°(¥ôø(í½¹ñ
+¡­
+¥É±Í¥éõìÄÁô¼ùô(íÑ¥Ùñ1½ÈÈÍ¥éõìÄÁô±ÍÍ9µô¹¥µÑµÍÁ¥¸¼ùô(íÌ¹±±ô(ð½¥Øø(í¤ðÍÑÁÌ¹±¹Ñ ´Ä (ñÉÉ½ÝI¥¡ÐÍ¥éõìÄÁô±ÍÍ9µõí±Íà (½¹üÑáÐµ±Õµ¥¹µÍÕÍÌèÑáÐµ±Õµ¥¹µµÕÑ°(¥ô¼ø(¥ô(ð½¥Øø(¤(ô¥ô(ð½¥Øø((ì¼¨MÑÑÕÌµÍÍ¨½ô(ñ¥Ø±ÍÍ9µôÑáÐµáÌÑáÐµ±Õµ¥¹µ¥´½¹Ðµµ½¹¼ø(íÍÑÑÕÌ¹µÍÍô(íÍÑÑÕÌ¹Ñ¥°ñÍÁ¸±ÍÍ9µôÑáÐµ±Õµ¥¹µµÕÑµ°´Äø¡íÍÑÑÕÌ¹Ñ¥±ô¤ð½ÍÁ¸ùô(ð½¥Øø(ð½¥Øø(¤)ô((¼¼RRR QÍÐA¥Á±¥¹	ÕÑÑ½¸¬5½°RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR )Õ¹Ñ¥½¸QÍÑA¥Á±¥¹A¹° ¤ì(½¹ÍÐÅôÕÍEÕÉå
+±¥¹Ð ¤(½¹ÍÐmÉÕ¹¹¥¹°ÍÑIÕ¹¹¥¹tôÕÍMÑÑ¡±Í¤(½¹ÍÐm±½°ÍÑ1½tôÕÍMÑÑñÉÉäñìÍÑÀèÍÑÉ¥¹ìÍÑÑÕÌè½¬ð¥°ðÍ­¥ÀðÉÕ¹¹¥¹ìµÍèÍÑÉ¥¹ôøø¡mt¤((½¹ÍÐ1½ôÕÍ
+±±¬ ¡ÍÑÀèÍÑÉ¥¹°ÍÑÑÕÌè½¬ð¥°ðÍ­¥ÀðÉÕ¹¹¥¹°µÍèÍÑÉ¥¹¤ôøì(ÍÑ1½¡ÁÉØôøì(¼¼UÁÑá¥ÍÑ¥¹ÍÑÀ¥ÉÕ¹¹¥¹°½Ñ¡ÉÝ¥Í¹Ü(½¹ÍÐ¥àôÁÉØ¹¥¹%¹à¡°ôø°¹ÍÑÀôôôÍÑÀ°¹ÍÑÑÕÌôôôÉÕ¹¹¥¹¤(¥¡¥àøôÀ¤ì(½¹ÍÐ¹áÐôl¸¸¹ÁÉÙt(¹áÑm¥átôìÍÑÀ°ÍÑÑÕÌ°µÍô(ÉÑÕÉ¸¹áÐ(ô(ÉÑÕÉ¸l¸¸¹ÁÉØ°ìÍÑÀ°ÍÑÑÕÌ°µÍõt(ô¤(ô°mt¤((½¹ÍÐÉÕ¹QÍÐôÕÍ
+±±¬¡Íå¹ ¤ôøì(ÍÑIÕ¹¹¥¹¡ÑÉÕ¤(ÍÑ1½¡mt¤(Õ1½ QMPA%A1%9PÍÑÉÑ¥¹Õ±°±½Ü¤((¼¼RR MÑÀÄè%¹ÍÉÐÑÍÐÉÑ¥ÙRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR (YÙÊ	Ú[Ù\	Ë	Ü[[ÉË	Ò[Ù\[È\ÝÜX]]HÝËÊB]ÜX]]RYÝ[È[H[HÂÛÛÝÈ]K\ÜHH]ØZ]Ý\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊB[Ù\
+Â]NÕTÕH\[[H\Ý	Û]È]J
+KÒTÓÔÝ[Ê
+KÛXÙJLKNJ_X]ÜN	ÕÚ]\Ö	ËÝ]\Î	ÙY	ËY]ÜÎÝØ\ÎÛÛ	ÒÛ[ÉË\WÜÝY\	ÚÛ[ÉËÙ[\][ÛÜÛ\	Õ\ÝHÛYZÈY[È\ÚØ\Ú]ÛÝÚ[ÈÞX[Ú\È[\ÈXÚÙÜÝ[	ËJBÙ[XÝ
 
-  const template = CREATIVE_TEMPLATES[selected]
-  const title = customTitle.trim() || template.title
-  const isKling = template.tool === 'Kling'
+BÚ[ÛJ
+BY
+\ÜHÝÈ\ÜÜX]]RYH]KYYÙÊ	Ú[Ù\	Ë	ÛÚÉËÝÈÜX]Y	ØÜX]]RYÛXÙJ
+_K
+BXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBHØ]Ú
+\HÂYÙÊ	Ú[Ù\	Ë	ÙZ[	Ë[Ù\Z[Y	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BÙ][[Ê[ÙJB]\BËÈ8¥ 8¥ Ý\Ù[\]HXHÛ[È8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YÙÊ	ÚÛ[ÉË	Ü[[ÉË	ÔÙ[[ÈÈÛ[ÈRKÊBHÂÛÛÝ\Ý[H]ØZ]Ù[\]P[Ø]PÜX]]JÂÜX]]RYÛ\	Õ\ÝHÛYZÈY[È\ÚØ\Ú]ÛÝÚ[ÈÞX[Ú\È[\ÈXÚÙÜÝ[	Ë\][Û	ÍIË[ÙN	ÜÝ	Ë\ÜXÝÜ][Î	ÌMIËÛ\[[TÝ]\Î
+Ý]\ÊHOÂY
+Ý]\ËÝ\OOH	ÙÙ[\][ÉÊHÂYÙÊ	ÚÛ[ÉË	Ü[[ÉËÝ]\ËY\ÜØYÙJBBKJBYÙÊ	ÚÛ[ÉË	ÛÚÉËY[ÈÙ[\]Y	Ü\Ý[Y[×Ý\ÛXÙJ
+
+_K
+BXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBHØ]Ú
+\HÂYÙÊ	ÚÛ[ÉË	ÙZ[	ËÛ[ÈZ[Y	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BÙ][[Ê[ÙJB]\BËÈ8¥ 8¥ Ý\Î\YHÝÈ8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YÙÊ	Ý\YKYË	Ü[[ÉË	ÐÚXÚÚ[ÈÝ\X\ÙHÝËÊBHÂÛÛÝÈ]NÝÈHH]ØZ]Ý\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊBÙ[XÝ
+	ÚYY[×Ý\Ý]\Ë]ÜWÜXYIÊB\J	ÚY	ËÜX]]RY
+BÚ[ÛJ
+BY
+ÝÏËY[×Ý\
+HÂYÙÊ	Ý\YKYË	ÛÚÉËÝÈÛÛ\YYY[×Ý\\Ù[Ý]\ÏIÜÝËÝ]\ßX
+BH[ÙHÂYÙÊ	Ý\YKYË	ÙZ[	Ë	ÑÝÈ^\ÝÈ]Y[×Ý\\È[	ÊBÙ][[Ê[ÙJB]\BHØ]Ú
+\HÂYÙÊ	Ý\YKYË	ÙZ[	ËÚXÚÈZ[Y	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BÙ][[Ê[ÙJB]\BËÈ8¥ 8¥ Ý\
+ÜÝÈÚ]\Ö8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YÙÊ	ÝÚ]\Ë	Ü[[ÉË	ÔÜÝ[ÈÈÚ]\ÖÊBHÂÛÛÝÙY]\Ý[H]ØZ]ÜÝÕÚ]\ÜX]]RY
+BY
+ÙY]\Ý[ÝXØÙ\ÜÊHÂYÙÊ	ÝÚ]\Ë	ÛÚÉËÙY]ÜÝY	ÝÙY]\Ý[ÜÝÝ\	ÛÈT]\Y	ßX
+BH[ÙHÂYÙÊ	ÝÚ]\Ë	ÙZ[	ËÚ]\Z[Y	ÝÙY]\Ý[\ÜX
+BBHØ]Ú
+\HÂYÙÊ	ÝÚ]\Ë	ÙZ[	ËÚ]\\Ü	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BBËÈ8¥ 8¥ ÛH8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YØÓÙÊ	ÕTÕTSSH8 %ÛÛ\]IÊBÙ][[Ê[ÙJBKØYÙËX×JBÛÛÝ[ÚÈHÙË[Ý	ÙË]\JOÝ]\ÈOOH	ÛÚÉÊBÛÛÝ\ÑZ[HÙËÛÛYJOÝ]\ÈOOH	ÙZ[	ÊB]\
+]Û\ÜÓ[YOHØ\YÛÝÈÜ\LÜ\Y\ÚYÜ\[[Z[K\[ÙKÌÌ]Û\ÜÓ[YOH^][\ËXÙ[\\ÝYKX]ÙY[MÜ\XÜ\[[Z[KXÜ\]Û\ÜÓ[YOH^][\ËXÙ[\Ø\L\ÝXLÚ^O^ÌMHÛ\ÜÓ[YOH^[[Z[K\[ÙHÏÜ[Û\ÜÓ[YOH^\ÛHÛXÛ^[[Z[K]^\[[H\ÝÜÜ[Ü[Û\ÜÓ[YOH^VÌLH^[[Z[KY[HÛ[[ÛÈÛ[È8¡¤Ý\X\ÙH8¡¤Ú]\ÜÜ[Ù]]ÛÛÛXÚÏ^Ü[\ÝB\ØXY^Ü[[ßBÛ\ÜÓ[YO^ØÛÞ
+	Ø\[ÙH^^ÈMKLKH^][\ËXÙ[\Ø\LKIË[[È		ÛÜXÚ]KMLÝ\ÛÜ[ÝX[ÝÙY	Ë
+_BÜ[[ÈÈØY\Ú^O^ÌLHÛ\ÜÓ[YOH[[X]K\Ü[Ï\ÝXLÚ^O^ÌLHÏBÜ[[ÈÈ	Ô[[ËÈ	Ô[\Ý	ßBØ]ÛÙ]ÛÙË[Ý	
+]Û\ÜÓ[YOHMÜXÙK^KLÛÙËX\
 
-  // Auto-generate a video prompt from the template title
-  const defaultPrompt = `Create a high-quality ${template.platform} video: ${template.title}. Professional lighting, smooth motion, engaging for social media.`
+JHO
+]Ù^O^Ú_HÛ\ÜÓ[YOH^][\Ë\Ý\Ø\L^^ÈÛ[[ÛÈÛÝ]\ÈOOH	ÛÚÉÈ	ÚXÚÐÚ\ÛHÚ^O^ÌLßHÛ\ÜÓ[YOH^[[Z[K\ÝXØÙ\ÜÈ^\Ú[ËL]LHÏBÛÝ]\ÈOOH	ÙZ[	È	Ú\ÛHÚ^O^ÌLßHÛ\ÜÓ[YOH^\YML^\Ú[ËL]LHÏBÛÝ]\ÈOOH	Ü[[ÉÈ	ØY\Ú^O^ÌLßHÛ\ÜÓ[YOH^[[Z[K\[ÙH[[X]K\Ü[^\Ú[ËL]LHÏBÛÝ]\ÈOOH	ÜÚÚ\	È	[\Ú\ÛHÚ^O^ÌLßHÛ\ÜÓ[YOH^[[Z[KYÛÛ^\Ú[ËL]LHÏB]Ü[Û\ÜÓ[YOH^[[Z[K]^Û\Ù[ZXÛÞÛÝ\WOÜÜ[ÉÈ	ßBÜ[Û\ÜÓ[YOH^[[Z[KY[HÛ\ÙßOÜÜ[Ù]Ù]
+J_BÈ\[[È	ÙË[Ý	
+]Û\ÜÓ[YO^ØÛÞ
+	Û]LÈLÈÝ[Y[È^^ÈÛXÛ^XÙ[\Ë[ÚÈ		ØË[[Z[K\ÝXØÙ\ÜËÌL^[[Z[K\ÝXØÙ\ÜÈÜ\Ü\[[Z[K\ÝXØÙ\ÜËÌÌ	Ë\ÑZ[		ØË\YMLÌL^\YMÜ\Ü\\YMLÌÌ	Ë
+_OØ[ÚÂÈ	ÕTÕTÔÑQÛ[È8¡¤Ý\X\ÙH8¡¤Ú]\Â	ÕTÕRSQ8 %ÚXÚÈÙÜÈXÝIßBÙ]
+_BÙ]
+_BÙ]
+BB¼¼RRR MÕµ½µÁ½¹¹ÑÌRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR )Õ¹Ñ¥½¸MÑÑÕÍ	¡ìÍÑÑÕÌôèìÍÑÑÕÌèÍÑÉ¥¹ô¤ì(½¹ÍÐµÀèI½ÉñÍÑÉ¥¹°ÍÑÉ¥¹øôì(±¥ÙèµÍÕÍÌ°(ÑÍÑ¥¹èµ½±°(ÉÐèµ±Õµ¥¹µµÕÑ¼ÈÀÑáÐµ±Õµ¥¹µ¥´°(ÁÕÍèµ¹È°(ô(ÉÑÕÉ¸ñÍÁ¸±ÍÍ9µõí±Íà °µÁmÍÑÑÕÍtüü¥ôùíÍÑÑÕÍôð½ÍÁ¸ø)ô()½¹ÍÐ%MQI%	UQ%=9}A1Q=I5Lôl(ì¹µèQ¥­Q½¬°¥½¸èÂ~:Ô°½±½Èè½ÉÈµÁ¥¹¬´ÔÀÀ¼ÌÀô°(ì¹µè%¹ÍÑÉ´°¥½¸èÂ~NÜ°½±½Èè½ÉÈµÁÕÉÁ±´ÔÀÀ¼ÌÀô°(ì¹µèe½ÕQÕ°¥½¸èZÓ¾â<°½±½Èè½ÉÈµÉ´ÔÀÀ¼ÌÀô°(ì¹µè1¥¹­%¸°¥½¸èÂ~Jð°½±½Èè½ÉÈµ±Õ´ÔÀÀ¼ÌÀô°(ì¹µèQÝ¥ÑÑÈ½`°¥½¸èrT°½±½Èè½ÉÈµÍ­ä´ÔÀÀ¼ÌÀô°(ì¹µè½½¬°¥½¸èÂ~N`°½±½Èè½ÉÈµ±Õ´ØÀÀ¼ÌÀô°(ì¹µèA¥¹ÑÉÍÐ°¥½¸èÂ~N0°½±½Èè½ÉÈµÉ´ÐÀÀ¼ÌÀô°(ì¹µèQ¡ÉÌ°¥½¸èÂ~Ô°½±½Èè½ÉÈµÉä´ÐÀÀ¼ÌÀô°)t()½¹ÍÐ
+IQ%Y}Q5A1QLôl(ìÑ¥Ñ±èAÉ½ÕÐQÍÑ¥µ½¹¥°P$Y½¥
+±½¹°Á±Ñ½É´èQ¥­Q½¬°Ñ½½°èÉÌô°(ìÑ¥Ñ±èAÉ½±´½M½±ÕÑ¥½¸!½½¬PMÑ½¬½½Ñ°Á±Ñ½É´è%¹ÍÑÉ´°Ñ½½°è-±¥¹ô°(ìÑ¥Ñ±è	½É½ÑÈQÉ¹Í½ÉµÑ¥½¸PUMÑå±°Á±Ñ½É´èe½ÕQÕ°Ñ½½°èÉÌô°(ìÑ¥Ñ±èDáÁ±¥¹ÈP$ÙÑÈ°Á±Ñ½É´è1¥¹­%¸°Ñ½½°è-±¥¹ô°(ìÑ¥Ñ±èQÉ¹¥¹M½Õ¹Iµ¥àPMÁ±¥ÐMÉ¸°Á±Ñ½É´èQ¥­Q½¬°Ñ½½°èÉÌô°(ìÑ¥Ñ±è
+ÕÍÑ½µÈMÑ½ÉäP
+¥¹µÑ¥µI½±°°Á±Ñ½É´è%¹ÍÑÉ´°Ñ½½°è-±¥¹ô°(ìÑ¥Ñ±èA¥¸A½¥¹Ð
+±±½ÕÐPQáÐ=ÙÉ±ä°Á±Ñ½É´èQÝ¥ÑÑÈ½`°Ñ½½°èÉÌô°(ìÑ¥Ñ±è!½ÜµQ¼QÕÑ½É¥°PMÉ¸I½É¥¹¬Y<°Á±Ñ½É´èe½ÕQÕ°Ñ½½°è-±¥¹ô°)t()½¹ÍÐQIQ}-e]=ILôl($Ù¥¼¹ÉÑ¥½¸°½¹Ñ¹ÐÕÑ½µÑ¥½¸°UÉÑ¥½¸°Ù¥É°µÉ­Ñ¥¹°(ÉÑ½ÈÑ½½±Ì°$½¹Ñ¹ÐÍÝÉ´°ÕÑ½µÑÍ½¥°µ¥°$µÉ­Ñ¥¹°)t(ËÈ8¥ 8¥ 8¥ Ù[\]HÜX]]H[Ù[8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ [Ý[ÛÙ[\]S[Ù[
+ÈÛÛÜÙKÛÙ[\]K\Ô[[Ë\[[TÝ]\ÈNÂÛÛÜÙN
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-lumina-card border border-lumina-border rounded-2xl shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b border-lumina-border">
-          <div>
-            <div className="text-lumina-text font-semibold text-sm">Generate New Creative</div>
-            <div className="text-lumina-dim text-xs">
-              {isKling ? '⚡ Kling AI — Real video generation' : 'Arcads template — draft only'}
-            </div>
-          </div>
-          <button onClick={onClose} className="text-lumina-muted hover:text-lumina-text p-1">
-            <Zap size={16} />
-          </button>
-        </div>
+HOÚYÛÙ[\]N
+ÜÎÂ]NÝ[ÎÈ]ÜNÝ[ÎÈÛÛÝ[ÎÂÛ\ÎÝ[ÎÈ\][ÛÎ	ÍIÈ	ÌL	ÎÈ[ÙOÎ	ÜÝ	È	ÜÉÎÂ\ÜXÝÜ][ÏÎ	ÌMIÈ	ÎNMÈ	ÌNIÂJHOÚY\Ô[[ÎÛÛX[\[[TÝ]\Î\[[TÝ]\È[JHÂÛÛÝÜÙ[XÝYÙ]Ù[XÝYHH\ÙTÝ]J
+BÛÛÝØÝ\ÝÛU]KÙ]Ý\ÝÛU]WHH\ÙTÝ]J	ÉÊBÛÛÝØÝ\ÝÛTÛ\Ù]Ý\ÝÛTÛ\HH\ÙTÝ]J	ÉÊBÛÛÝÙ\][ÛÙ]\][ÛHH\ÙTÝ]O	ÍIÈ	ÌL	Ï	ÍIÊBÛÛÝÛ[ÙKÙ][ÙWHH\ÙTÝ]O	ÜÝ	È	ÜÉÏ	ÜÝ	ÊBÛÛÝØ\ÜXÝÙ]\ÜXÝHH\ÙTÝ]O	ÌMIÈ	ÎNMÈ	ÌNIÏ	ÌMIÊBÛÛÝ[\]HHÔPUUWÕSTUTÖÜÙ[XÝYBÛÛÝ]HHÝ\ÝÛU]K[J
+H[\]K]BÛÛÝ\ÒÛ[ÈH[\]KÛÛOOH	ÒÛ[ÉÂÛÛÝY][Û\HÜX]HHYÚ\]X[]H	Ý[\]K]Ü_HY[Î	Ý[\]K]_KÙ\ÜÚ[Û[YÚ[ËÛ[ÛÝ[Ý[Û[ØYÚ[ÈÜÛØÚX[YYXK]\
+]Û\ÜÓ[YOH^Y[Ù]LML^][\ËXÙ[\\ÝYKXÙ[\M]Û\ÜÓ[YOHXÛÛ]H[Ù]LËXXÚËÍÌXÚÙÜX\\ÛHÛÛXÚÏ^ÛÛÛÜÙ_HÏ]Û\ÜÓ[YOH[]]HËY[X^]Ë[ÈË[[Z[KXØ\Ü\Ü\[[Z[KXÜ\Ý[YLÚYÝËLÝ\ÝËZY[]Û\ÜÓ[YOH^][\ËXÙ[\\ÝYKX]ÙY[MHÜ\XÜ\[[Z[KXÜ\]]Û\ÜÓ[YOH^[[Z[K]^Û\Ù[ZXÛ^\ÛHÙ[\]H]ÈÜX]]OÙ]]Û\ÜÓ[YOH^[[Z[KY[H^^ÈÚ\ÒÛ[ÈÈ	ø¦¨HÛ[ÈRH8 %X[Y[ÈÙ[\][Û
+]JIÈ	Ð\ØYÈ[\]H8 %YÛIßBÙ]Ù]]ÛÛÛXÚÏ^ÛÛÛÜÙ_HÛ\ÜÓ[YOH^[[Z[K[]]YÝ\^[[Z[K]^LH\Ú^O^ÌMHÏØ]ÛÙ]]Û\ÜÓ[YOHMHÜXÙK^KMX^ZVÍLHÝ\ÝË^KX]]ÈËÊ\[[HÝ]\È[ÚYH[Ù[
+ßBÜ\[[TÝ]\È	\[[TÝ]\ËÝ\OOH	ÚYIÈ	
+\[[UXÚÙ\Ý]\Ï^Ü\[[TÝ]\ßHÏ
+_B]X[Û\ÜÓ[YOH^^È^[[Z[KY[HÛ[YY][HØÚÈXLÜX]]H[\]OÛX[]Û\ÜÓ[YOHÜYÜYXÛÛËLHØ\LÐÔPUUWÕSTUTËX\
 
-        <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
-          {/* Template selection */}
-          <div>
-            <label className="text-xs text-lumina-dim font-medium block mb-2">Creative Template</label>
-            <div className="grid grid-cols-1 gap-2">
-              {CREATIVE_TEMPLATES.map((t, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setSelected(i); setCustomTitle(''); setCustomPrompt('') }}
-                  className={clsx(
-                    'text-left text-xs p-3 rounded-lg border transition-all',
-                    selected === i
-                      ? 'border-lumina-pulse bg-lumina-pulse/10 text-lumina-pulse'
-                      : 'border-lumina-border text-lumina-dim hover:border-lumina-pulse/40',
-                  )}
-                >
-                  <div className="font-medium">{t.title}</div>
-                  <div className="text-[10px] mt-0.5 opacity-70">
-                    {t.platform} | {t.tool}
-                    {t.tool === 'Kling' && ' ⚡ Real AI Video'}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Custom title override */}
-          <div>
-            <label className="text-xs text-lumina-dim font-medium block mb-1.5">
-              Custom Title <span className="text-lumina-muted">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={customTitle}
-              onChange={e => setCustomTitle(e.target.value)}
-              placeholder="e.g. 'Black Friday Sale — UGC Mashup'"
-              className="w-full bg-lumina-bg border border-lumina-border rounded-xl px-3 py-2.5 text-xs text-lumina-text placeholder-lumina-muted focus:outline-none focus:border-lumina-pulse transition-colors"
-            />
-          </div>
-
-          {/* Kling-specific: video prompt + settings */}
-          {isKling && (
-            <>
-              <div>
-                <label className="text-xs text-lumina-dim font-medium block mb-1.5">
-                  Video Prompt <span className="text-lumina-muted">(sent to Kling AI)</span>
-                </label>
-                <textarea
-                  value={customPrompt}
-                  onChange={e => setCustomPrompt(e.target.value)}
-                  placeholder={defaultPrompt}
-                  rows={3}
-                  className="w-full bg-lumina-bg border border-lumina-border rounded-xl px-3 py-2.5 text-xs text-lumina-text placeholder-lumina-muted focus:outline-none focus:border-lumina-pulse transition-colors resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-[10px] text-lumina-dim font-medium block mb-1">Duration</label>
-                  <select
-                    value={duration}
-                    onChange={e => setDuration(e.target.value as '5' | '10')}
-                    className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-2 py-1.5 text-xs text-lumina-text"
-                  >
-                    <option value="5">5 seconds</option>
-                    <option value="10">10 seconds</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] text-lumina-dim font-medium block mb-1">Quality</label>
-                  <select
-                    value={mode}
-                    onChange={e => setMode(e.target.value as 'std' | 'pro')}
-                    className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-2 py-1.5 text-xs text-lumina-text"
-                  >
-                    <option value="std">Standard</option>
-                    <option value="pro">Pro (slower)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] text-lumina-dim font-medium block mb-1">Aspect</label>
-                  <select
-                    value={aspect}
-                    onChange={e => setAspect(e.target.value as '16:9' | '9:16' | '1:1')}
-                    className="w-full bg-lumina-bg border border-lumina-border rounded-lg px-2 py-1.5 text-xs text-lumina-text"
-                  >
-                    <option value="16:9">16:9 landscape</option>
-                    <option value="9:16">9:16 portrait</option>
-                    <option value="1:1">1:1 square</option>
-                  </select>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Preview */}
-          <div className="bg-lumina-bg/60 rounded-lg p-3 text-xs">
-            <div className="text-lumina-muted mb-1">Will create:</div>
-            <div className="text-lumina-text font-medium">{title}</div>
-            <div className="text-lumina-dim mt-0.5">
-              {template.platform} | {template.tool} | Status: draft
-              {isKling && ` | ${duration}s | ${mode} | ${aspect}`}
-            </div>
-            {isKling && (
-              <div className="mt-2 text-lumina-pulse text-[10px]">
-                ⚡ Will send to Kling AI for real video generation (~1-3 min)
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="p-5 border-t border-lumina-border">
-          <button
-            onClick={() => onGenerate({
-              title,
-              platform: template.platform,
-              tool: template.tool,
-              prompt: customPrompt.trim() || defaultPrompt,
-              duration,
-              mode,
-              aspect_ratio: aspect,
-            })}
-            disabled={isPending}
-            className={clsx(
-              'btn-pulse w-full flex items-center justify-center gap-2 py-2.5',
-              isPending && 'opacity-50 cursor-not-allowed',
-            )}
-          >
-            <Zap size={13} className={isPending ? 'animate-spin' : ''} />
-            {isPending ? 'Creating Creative...' : isKling ? '⚡ Generate with Kling AI' : 'Generate Creative'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
+JHO
+]ÛÙ^O^Ú_BÛÛXÚÏ^Ê
+HOÈÙ]Ù[XÝY
+JNÈÙ]Ý\ÝÛU]J	ÉÊNÈÙ]Ý\ÝÛTÛ\
+	ÉÊH_BÛ\ÜÓ[YO^ØÛÞ
+	Ý^[Y^^ÈLÈÝ[Y[ÈÜ\[Ú][ÛX[	ËÙ[XÝYOOHBÈ	ØÜ\[[Z[K\[ÙHË[[Z[K\[ÙKÌL^[[Z[K\[ÙIÂ	ØÜ\[[Z[KXÜ\^[[Z[KY[HÝ\Ü\[[Z[K\[ÙKÍ	Ë
+_B]Û\ÜÓ[YOB&föçBÖÖVFVÒ#ç·BçFFÆWÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÕ³Ò×BÓãR÷6GÓs#à¢·BçÆFf÷&×ÒÂ·BçFööÇÐ¢·BçFööÂÓÓÒt¶Æærrbbr)ª&VÂfFVòwÐ¢ÂöFcà¢Âö'WGFöãà¢Ð¢ÂöFcà¢ÂöFcà ¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"ÓãR#à¢7W7FöÒFFÆRÇ7â6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVB#â÷FöæÂÂ÷7ãà¢ÂöÆ&VÃà¢ÆçW@¢GSÒ'FWB ¢fÇVS×¶7W7FöÕFFÆWÐ¢öä6ævS×¶RÓâ6WD7W7FöÕFFÆRRçF&vWBçfÇVRÐ¢Æ6VöÆFW#Ò&Rærât&Æ6²g&F6ÆR(	BTt2Ö6Wr ¢6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVB×ÂÓ2Ó"ãRFWB×2FWBÖÇVÖæ×FWBÆ6VöÆFW"ÖÇVÖæÖ×WFVBfö7W3¦÷WFÆæRÖæöæRfö7W3¦&÷&FW"ÖÇVÖæ×VÇ6RG&ç6FöâÖ6öÆ÷'2 ¢óà¢ÂöFcà ¢¶4¶Æærbb¢Ãà¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"ÓãR#à¢fFVò&ö×BÇ7â6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVB#â6VçBFò¶ÆærÂ÷7ãà¢ÂöÆ&VÃà¢ÇFWF&V¢fÇVS×¶7W7FöÕ&ö×GÐ¢öä6ævS×¶RÓâ6WD7W7FöÕ&ö×BRçF&vWBçfÇVRÐ¢Æ6VöÆFW#×¶FVfVÇE&ö×GÐ¢&÷w3×³7Ð¢6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVB×ÂÓ2Ó"ãRFWB×2FWBÖÇVÖæ×FWBÆ6VöÆFW"ÖÇVÖæÖ×WFVBfö7W3¦÷WFÆæRÖæöæRfö7W3¦&÷&FW"ÖÇVÖæ×VÇ6RG&ç6FöâÖ6öÆ÷'2&W6¦RÖæöæR ¢óà¢ÂöFcà¢ÆFb6Æ74æÖSÒ&w&Bw&BÖ6öÇ2Ó2vÓ2#à¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"Ó#äGW&FöãÂöÆ&VÃà¢Ç6VÆV7BfÇVS×¶GW&FöçÒöä6ævS×¶RÓâ6WDGW&FöâRçF&vWBçfÇVR2sRrÂsrÒ6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVBÖÆrÓ"ÓãRFWB×2FWBÖÇVÖæ×FWB#à¢Æ÷FöâfÇVSÒ#R#ãR6V6öæG3Âö÷Föãà¢Æ÷FöâfÇVSÒ##ã6V6öæG3Âö÷Föãà¢Â÷6VÆV7Cà¢ÂöFcà¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"Ó#åVÆGÂöÆ&VÃà¢Ç6VÆV7BfÇVS×¶ÖöFWÒöä6ævS×¶RÓâ6WDÖöFRRçF&vWBçfÇVR2w7FBrÂw&òrÒ6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVBÖÆrÓ"ÓãRFWB×2FWBÖÇVÖæ×FWB#à¢Æ÷FöâfÇVSÒ'7FB#å7FæF&CÂö÷Föãà¢Æ÷FöâfÇVSÒ'&ò#å&ò6Æ÷vW"Âö÷Föãà¢Â÷6VÆV7Cà¢ÂöFcà¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"Ó#ä7V7CÂöÆ&VÃà¢Ç6VÆV7BfÇVS×¶7V7GÒöä6ævS×¶RÓâ6WD7V7BRçF&vWBçfÇVR2sc£rÂs£brÂs£rÒ6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVBÖÆrÓ"ÓãRFWB×2FWBÖÇVÖæ×FWB#à¢Æ÷FöâfÇVSÒ#c£#ãc£ÆæG66SÂö÷Föãà¢Æ÷FöâfÇVSÒ#£b#ã£b÷'G&CÂö÷Föãà¢Æ÷FöâfÇVSÒ#£#ã£7V&SÂö÷Föãà¢Â÷6VÆV7Cà¢ÂöFcà¢ÂöFcà¢Âóà¢Ð ¢ÆFb6Æ74æÖSÒ&&rÖÇVÖæÖ&róc&÷VæFVBÖÆrÓ2FWB×2#à¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVBÖ"Ó#åvÆÂ7&VFS£ÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæ×FWBföçBÖÖVFVÒ#ç·FFÆWÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæÖFÒ×BÓãR#à¢·FV×ÆFRçÆFf÷&×ÒÂ·FV×ÆFRçFööÇÒÂ7FGW3¢G&g@¢¶4¶ÆærbbÂG¶GW&Föç×2ÂG¶ÖöFWÒÂG¶7V7GÖÐ¢ÂöFcà¢¶4¶Æærbb¢ÆFb6Æ74æÖSÒ&×BÓ"FWBÖÇVÖæ×VÇ6RFWBÕ³Ò#à¢)ª¶ÆærvF'&WG'ãÓ2Öâ(i"WFò×6fRFò7W&6P¢ÂöFcà¢Ð¢ÂöFcà¢ÂöFcà ¢ÆFb6Æ74æÖSÒ'ÓR&÷&FW"×B&÷&FW"ÖÇVÖæÖ&÷&FW"#à¢Æ'WGFöà¢öä6Æ6³×²ÓâöävVæW&FR°¢FFÆRÀ¢ÆFf÷&Ó¢FV×ÆFRçÆFf÷&ÒÀ¢FööÃ¢FV×ÆFRçFööÂÀ¢&ö×C¢7W7FöÕ&ö×BçG&ÒÇÂFVfVÇE&ö×BÀ¢GW&FöâÂÖöFRÂ7V7E÷&Fó¢7V7BÀ¢ÒÐ¢F6&ÆVC×¶5VæFæwÐ¢6Æ74æÖS×¶6Ç7¢v'Fâ×VÇ6RrÖgVÆÂfÆWFV×2Ö6VçFW"§W7FgÖ6VçFW"vÓ"Ó"ãRrÀ¢5VæFærbbv÷6GÓS7W'6÷"Öæ÷BÖÆÆ÷vVBrÀ¢Ð¢à¢Å¦6¦S×³7Ò6Æ74æÖS×¶5VæFæròvæÖFR×7âr¢rwÒóà¢¶5VæFæròt7&VFær7&VFfRâââr¢4¶Æærò~)ªvVæW&FRvF¶Æærr¢tvVæW&FR7&VFfRwÐ¢Âö'WGFöãà¢ÂöFcà¢ÂöFcà¢ÂöFcà¢§Ð // âââ Main component ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 export default function ContentSwarm() {
   const { data: creatives = [], isLoading } = useUgcCreatives()
   const { data: seoKeywords = [] } = useSeoKeywords()
@@ -414,21 +255,16 @@ export default function ContentSwarm() {
   const distributeCreative = useDistributeCreative()
   const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [distributeResult, setDistributeResult] = useState<DistributeResponse | null>(null)
+  const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null)
 
   const liveCreatives = creatives.filter((c) => c.status === 'live')
   const videosReady = creatives.filter((c) => c.video_url).length
   const videosGenerating = creatives.filter((c) => c.api_provider === 'kling' && !c.video_url && c.status === 'testing').length
   const totalViews = creatives.reduce((s, c) => s + (c.views ?? 0), 0)
   const roasItems  = creatives.filter((c) => (c.roas ?? 0) > 0)
-  const avgRoas    = roasItems.length
-    ? roasItems.reduce((s, c) => s + c.roas, 0) / roasItems.length
-    : 0
-
-  // SEO score: simple calc based on keywords with positions in top 10
+  const avgRoas    = roasItems.length ? roasItems.reduce((s, c) => s + c.roas, 0) / roasItems.length : 0
   const rankedKeywords = seoKeywords.filter(k => k.position && k.position <= 10)
-  const seoScore = seoKeywords.length > 0
-    ? Math.round((rankedKeywords.length / Math.max(seoKeywords.length, 1)) * 100)
-    : 0
+  const seoScore = seoKeywords.length > 0 ? Math.round((rankedKeywords.length / Math.max(seoKeywords.length, 1)) * 100) : 0
 
   return (
     <div className="space-y-6">
@@ -436,7 +272,7 @@ export default function ContentSwarm() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lumina-text font-bold text-xl">AI UGC + Content Swarm</h1>
-          <p className="text-lumina-dim text-sm">Arcads | Kling | Auto-Distribution | SEO Optimizer</p>
+          <p className="text-lumina-dim text-sm">Kling AI | Auto-Distribution | 2x Retry | [UGC] Logging</p>
         </div>
         <button className="btn-pulse flex items-center gap-2" onClick={() => setShowGenerateModal(true)}>
           <Zap size={14} />
@@ -444,18 +280,24 @@ export default function ContentSwarm() {
         </button>
       </div>
 
+      {/* Pipeline Status Tracker â shows when active */}
+      <PipelineTracker status={pipelineStatus} />
+
+      {/* Test Pipeline */}
+      <TestPipelinePanel />
+
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
         <div className="card-glow text-center">
           <div className="stat-label">Total Views</div>
           <div className="stat-value text-lumina-pulse">
-            {totalViews > 0 ? `${(totalViews / 1000).toFixed(0)}k` : '—'}
+            {totalViews > 0 ? `${(totalViews / 1000).toFixed(0)}k` : 'â'}
           </div>
         </div>
         <div className="card-glow text-center">
           <div className="stat-label">Avg ROAS</div>
           <div className="stat-value text-lumina-gold">
-            {avgRoas > 0 ? `${avgRoas.toFixed(1)}x` : '—'}
+            {avgRoas > 0 ? `${avgRoas.toFixed(1)}x` : 'â'}
           </div>
         </div>
         <div className="card-glow text-center">
@@ -473,13 +315,328 @@ export default function ContentSwarm() {
         </div>
       </div>
 
-      {/* Swarm status bar */}
-      <div className="card-glow flex items-center justify-between py-3">
-        <div className="flex items-center gap-2">
-          <div className="pulse-dot" />
-          <span className="text-lumina-text text-sm font-semibold">Content Swarm Running</span>
+      {/* Creatives list */}
+      <div className="card-glow">
+        <div className="section-header">
+          <Video size={14} />
+          Active Creatives
         </div>
-        <span className="text-lumina-dim text-xs font-mono">{creatives.length} creatives managed</span>
+
+        {isLoading ? (
+ * AI UGC + Content Swarm Panel â HARDENED PIPELINE
+ *
+ * UGC â Kling â Supabase â Twitter
+ *
+ * Features:
+ * - Visible pipeline status: Generating â Saving â Posting â Complete
+ * - Retry logic (2x) on Kling + Twitter failures
+ * - Supabase realtime auto-refresh after insert
+ * - [UGC] logging at every step
+ * - "Test Pipeline" button for full-flow verification
+ */
+import { useState, useEffect, useCallback } from 'react'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
+import {
+  Video, Zap, Globe, TrendingUp, Play, Plus, Search,
+  ExternalLink, Trash2, Loader2, CheckCircle, AlertCircle,
+  Film, TestTube2, ArrowRight, RefreshCw, XCircle,
+} from 'lucide-react'
+import { supabase } from '../lib/supabase'
+import {
+  generateAndSaveCreative, checkKlingApiHealth,
+  type PipelineStatus,
+} from '../lib/ugcApi'
+import {
+  distributeToAll, postToTwitter,
+  type DistributeResponse,
+} from '../lib/distributeApi'
+import clsx from 'clsx'
+
+// âââ Types âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+interface UgcCreative {
+  id:                string
+  title:             string
+  platform:          string
+  status:            'live' | 'testing' | 'draft' | 'paused'
+  views:             number
+  ctr:               number
+  roas:              number
+  tool:              string
+  created_at:        string
+  video_url?:        string | null
+  thumbnail_url?:    string | null
+  caption?:          string | null
+  platform_ready?:   boolean
+  distributed_to?:   string[]
+  generation_prompt?: string | null
+  api_provider?:     string | null
+}
+
+interface SeoKeyword {
+  id:         string
+  keyword:    string
+  position:   number | null
+  volume:     number | null
+  difficulty: number | null
+  url:        string | null
+  updated_at: string
+}
+
+// âââ Logger âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+function ugcLog(msg: string, data?: Record<string, unknown>) {
+  const ts = new Date().toISOString().slice(11, 19)
+  console.log(`[UGC][${ts}] ${msg}`, data ? JSON.stringify(data) : '')
+}
+
+// âââ Supabase hooks with realtime ââââââââââââââââââââââââââââââââââââââââââââ
+function useUgcCreatives() {
+  const qc = useQueryClient()
+
+  // Auto-refresh on realtime INSERT/UPDATE
+  useEffect(() => {
+    const channel = supabase
+      .channel('ugc_creatives_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ugc_creatives' },
+        (payload) => {
+          ugcLog('realtime update', { event: payload.eventType, id: (payload.new as Record<string, unknown>)?.id })
+          qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [qc])
+
+  return useQuery<UgcCreative[]>({
+    queryKey: ['ugc_creatives'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ugc_creatives')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (error) {
+        console.warn('[UGC] ugc_creatives query:', error.message)
+        return []
+      }
+      return data ?? []
+    },
+    staleTime: 30_000,
+  })
+}
+
+function useSeoKeywords() {
+  return useQuery<SeoKeyword[]>({
+    queryKey: ['seo_keywords'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('seo_keywords')
+        .select('*')
+        .order('position', { ascending: true, nullsFirst: false })
+      if (error) {
+        console.warn('[UGC] seo_keywords:', error.message)
+        return []
+      }
+      return data ?? []
+    },
+    staleTime: 120_000,
+  })
+}
+ËÈ8¥ 8¥ 8¥ Ù[\]HÜX]]H]]][Û8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ [Ý[Û\ÙQÙ[\]PÜX]]J
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
+
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+ÜÎÂ]NÝ[Â]ÜNÝ[ÂÛÛÝ[ÂÛ\ÎÝ[Â\][ÛÎ	ÍIÈ	ÌL	Â[ÙOÎ	ÜÝ	È	ÜÉÂ\ÜXÝÜ][ÏÎ	ÌMIÈ	ÎNMÈ	ÌNIÂÛÙÜ\ÜÏÎ
+Ý]\ÎÝ[ÊHOÚYÛ\[[TÝ]\ÏÎ
+Ý]\Î\[[TÝ]\ÊHOÚYJHOÂYØÓÙÊ	ÜÝ\8 %[Ù\[ÈYÝÉÊBÛÛÝÈ]NÜX]]K\ÜHH]ØZ]Ý\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊB[Ù\
+Â]NÜË]K]ÜNÜË]ÜKÝ]\Î	ÙY	ËY]ÜÎÝØ\ÎÛÛÜËÛÛ\WÜÝY\	ÚÛ[ÉËÙ[\][ÛÜÛ\ÜËÛ\ÜË]KJBÙ[XÝ
+
+BÚ[ÛJ
+BY
+\ÜHÝÈ\ÜYØÓÙÊ	ÙYÝÈÜX]Y	ËÈYÜX]]KY]NÜX]]K]HJBY
+ÜËÛÛOOH	ÒÛ[ÉÊHÂËÈ\HÛ[ÈÙ[\][Û8 %Õ]XÚYÙH]ØZ]]ÜÝ]\ÈXÚÚ[ÂÙ[\]P[Ø]PÜX]]JÂÜX]]RYÜX]]KYÛ\ÜËÛ\ÜË]K\][ÛÜË\][Û	ÍIË[ÙNÜË[ÙH	ÜÝ	Ë\ÜXÝÜ][ÎÜË\ÜXÝÜ][È	ÌMIËÛÙÜ\ÜÎÜËÛÙÜ\ÜËÛ\[[TÝ]\ÎÜËÛ\[[TÝ]\ËJK[
+
+HOÂXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBJKØ]Ú
+
+\HOÂYØÓÙÊ	Ü\[[H\ÜËÈ\Ü\Y\ÜØYÙKÜX]]RYÜX]]KYJBÝ\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊB\]JÈÝ]\Î	Ü]\ÙY	ÈJB\J	ÚY	ËÜX]]KY
+B[
+
+HOXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJJBJBB]\ÜX]]BKÛÝXØÙ\ÜÎ
+
+HOÂXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBKJBB[Ý[Û\ÙQ[]PÜX]]J
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
+
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+YÝ[ÊHOÂÛÛÝÈ\ÜHH]ØZ]Ý\X\ÙKÛJ	ÝYØ×ØÜX]]\ÉÊK[]J
+K\J	ÚY	ËY
+BY
+\ÜHÝÈ\ÜKÛÝXØÙ\ÜÎ
+
+HOÈXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJHKJBB[Ý[Û\ÙU\]PÜX]]TÝ]\Ê
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
+
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+ÈYÝ]\ÈNÈYÝ[ÎÈÝ]\ÎYØÐÜX]]VÉÜÝ]\É×HJHOÂÛÛÝÈ\ÜHH]ØZ]Ý\X\ÙKÛJ	ÝYØ×ØÜX]]\ÉÊK\]JÈÝ]\ÈJK\J	ÚY	ËY
+BY
+\ÜHÝÈ\ÜKÛÝXØÙ\ÜÎ
+
+HOÈXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJHKJBB[Ý[Û\ÙQ\ÝX]PÜX]]J
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
+
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+ÜX]]RYÝ[ÊNÛZ\ÙO\ÝX]T\ÜÛÙOOÂÛÛÝ\Ý[H]ØZ]\ÝX]UÐ[
+ÜX]]RY
+BXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJB]\\Ý[KJBB¼¼RRR A¥Á±¥¹MÑÑÕÌQÉ­È
+½µÁ½¹¹ÐRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR )Õ¹Ñ¥½¸A¥Á±¥¹QÉ­È¡ìÍÑÑÕÌôèìÍÑÑÕÌèA¥Á±¥¹MÑÑÕÌð¹Õ±°ô¤ì(¥ ÍÑÑÕÌñðÍÑÑÕÌ¹ÍÑÀôôô¥±¤ÉÑÕÉ¸¹Õ±°((½¹ÍÐÍÑÁÌèì­äèÍÑÉ¥¹ì±°èÍÑÉ¥¹õmtôl(ì­äè¹ÉÑ¥¹°±°è¹ÉÑ¥¹ô°(ì­äèÍÙ¥¹°±°èMÙ¥¹ô°(ì­äèÁ½ÍÑ¥¹°±°èA½ÍÑ¥¹ô°(ì­äè½µÁ±Ñ°±°è
+½µÁ±Ñô°(t((½¹ÍÐÕÉÉ¹Ñ%àôÍÑÁÌ¹¥¹%¹à¡ÌôøÌ¹­äôôôÍÑÑÕÌ¹ÍÑÀ¤(½¹ÍÐ¥ÍÉÉ½ÈôÍÑÑÕÌ¹ÍÑÀôôôÉÉ½È((ÉÑÕÉ¸ (ñ¥Ø±ÍÍ9µõí±Íà (Éµ±½ÜÀ´Ð½ÉÈµ°´Ð°(¥ÍÉÉ½Èü½ÉÈµ°µÉ´ÔÀÀµÉ´ÔÀÀ¼Ôè½ÉÈµ°µ±Õµ¥¹µÁÕ±Íµ±Õµ¥¹µÁÕ±Í¼Ô(¥ôø(ñ¥Ø±ÍÍ9µô±à¥ÑµÌµ¹ÑÈÀ´Èµ´Ìø(í¥ÍÉÉ½Èü (ña
+¥É±Í¥éõìÄÙô±ÍÍ9µôÑáÐµÉ´ÔÀÀ¼ø(¤èÍÑÑÕÌ¹ÍÑÀôôô½µÁ±Ñü (ñ
+¡­
+¥É±Í¥éõìÄÙô±ÍÍ9µôÑáÐµ±Õµ¥¹µÍÕÍÌ¼ø(¤è (ñ1½ÈÈÍ¥éõìÄÙô±ÍÍ9µôÑáÐµ±Õµ¥¹µÁÕ±Í¹¥µÑµÍÁ¥¸¼ø(¥ô(ñÍÁ¸±ÍÍ9µôÑáÐµÍ´½¹ÐµÍµ¥½±ÑáÐµ±Õµ¥¹µÑáÐø(í¥ÍÉÉ½ÈüA¥Á±¥¹¥±èÍÑÑÕÌ¹ÍÑÀôôô½µÁ±ÑüA¥Á±¥¹
+½µÁ±ÑèA¥Á±¥¹IÕ¹¹¥¹ô(ð½ÍÁ¸ø(ð½¥Øø((ì¼¨MÑÀ¥¹¥Ñ½ÉÌ¨½ô(ñ¥Ø±ÍÍ9µô±à¥ÑµÌµ¹ÑÈÀ´Äµ´Ìø(íÍÑÁÌ¹µÀ ¡Ì°¤¤ôøì(½¹ÍÐ½¹ô¥ÍÉÉ½È¡ÕÉÉ¹Ñ%àø¤ñðÍÑÑÕÌ¹ÍÑÀôôô½µÁ±Ñ¤(½¹ÍÐÑ¥Ùô¥ÍÉÉ½ÈÕÉÉ¹Ñ%àôôô¤ÍÑÑÕÌ¹ÍÑÀôô½µÁ±Ñ(ÉÑÕÉ¸ (ñ¥Ø­äõíÌ¹­åô±ÍÍ9µô±à¥ÑµÌµ¹ÑÈÀ´Ä±à´Äø(ñ¥Ø±ÍÍ9µõí±Íà (±à¥ÑµÌµ¹ÑÈÀ´Ä¸ÔÁà´ÈÁä´ÄÉ½Õ¹µµÑáÐµlÄÁÁát½¹ÐµÍµ¥½±±à´ÄÑáÐµ¹ÑÈ©ÕÍÑ¥äµ¹ÑÈ°(½¹µ±Õµ¥¹µÍÕÍÌ¼ÈÀÑáÐµ±Õµ¥¹µÍÕÍÌ°(Ñ¥Ùµ±Õµ¥¹µÁÕ±Í¼ÈÀÑáÐµ±Õµ¥¹µÁÕ±Í¹¥µÑµÁÕ±Í°(½¹Ñ¥Ùµ±Õµ¥¹µÑáÐµ±Õµ¥¹µµÕÑ°(¥ôø(í½¹ñ
+¡­
+¥É±Í¥éõìÄÁô¼ùô(íÑ¥Ùñ1½ÈÈÍ¥éõìÄÁô±ÍÍ9µô¹¥µÑµÍÁ¥¸¼ùô(íÌ¹±±ô(ð½¥Øø(í¤ðÍÑÁÌ¹±¹Ñ ´Ä (ñÉÉ½ÝI¥¡ÐÍ¥éõìÄÁô±ÍÍ9µõí±Íà (½¹üÑáÐµ±Õµ¥¹µÍÕÍÌèÑáÐµ±Õµ¥¹µµÕÑ°(¥ô¼ø(¥ô(ð½¥Øø(¤(ô¥ô(ð½¥Øø((ì¼¨MÑÑÕÌµÍÍ¨½ô(ñ¥Ø±ÍÍ9µôÑáÐµáÌÑáÐµ±Õµ¥¹µ¥´½¹Ðµµ½¹¼ø(íÍÑÑÕÌ¹µÍÍô(íÍÑÑÕÌ¹Ñ¥°ñÍÁ¸±ÍÍ9µôÑáÐµ±Õµ¥¹µµÕÑµ°´Äø¡íÍÑÑÕÌ¹Ñ¥±ô¤ð½ÍÁ¸ùô(ð½¥Øø(ð½¥Øø(¤)ô((¼¼RRR QÍÐA¥Á±¥¹	ÕÑÑ½¸¬5½°RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR )Õ¹Ñ¥½¸QÍÑA¥Á±¥¹A¹° ¤ì(½¹ÍÐÅôÕÍEÕÉå
+±¥¹Ð ¤(½¹ÍÐmÉÕ¹¹¥¹°ÍÑIÕ¹¹¥¹tôÕÍMÑÑ¡±Í¤(½¹ÍÐm±½°ÍÑ1½tôÕÍMÑÑñÉÉäñìÍÑÀèÍÑÉ¥¹ìÍÑÑÕÌè½¬ð¥°ðÍ­¥ÀðÉÕ¹¹¥¹ìµÍèÍÑÉ¥¹ôøø¡mt¤((½¹ÍÐ1½ôÕÍ
+±±¬ ¡ÍÑÀèÍÑÉ¥¹°ÍÑÑÕÌè½¬ð¥°ðÍ­¥ÀðÉÕ¹¹¥¹°µÍèÍÑÉ¥¹¤ôøì(ÍÑ1½¡ÁÉØôøì(¼¼UÁÑá¥ÍÑ¥¹ÍÑÀ¥ÉÕ¹¹¥¹°½Ñ¡ÉÝ¥Í¹Ü(½¹ÍÐ¥àôÁÉØ¹¥¹%¹à¡°ôø°¹ÍÑÀôôôÍÑÀ°¹ÍÑÑÕÌôôôÉÕ¹¹¥¹¤(¥¡¥àøôÀ¤ì(½¹ÍÐ¹áÐôl¸¸¹ÁÉÙt(¹áÑm¥átôìÍÑÀ°ÍÑÑÕÌ°µÍô(ÉÑÕÉ¸¹áÐ(ô(ÉÑÕÉ¸l¸¸¹ÁÉØ°ìÍÑÀ°ÍÑÑÕÌ°µÍõt(ô¤(ô°mt¤((½¹ÍÐÉÕ¹QÍÐôÕÍ
+±±¬¡Íå¹ ¤ôøì(ÍÑIÕ¹¹¥¹¡ÑÉÕ¤(ÍÑ1½¡mt¤(Õ1½ QMPA%A1%9PÍÑÉÑ¥¹Õ±°±½Ü¤((¼¼RR MÑÀÄè%¹ÍÉÐÑÍÐÉÑ¥ÙRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR (YÙÊ	Ú[Ù\	Ë	Ü[[ÉË	Ò[Ù\[È\ÝÜX]]HÝËÊB]ÜX]]RYÝ[È[H[HÂÛÛÝÈ]K\ÜHH]ØZ]Ý\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊB[Ù\
+Â]NÕTÕH\[[H\Ý	Û]È]J
+KÒTÓÔÝ[Ê
+KÛXÙJLKNJ_X]ÜN	ÕÚ]\Ö	ËÝ]\Î	ÙY	ËY]ÜÎÝØ\ÎÛÛ	ÒÛ[ÉË\WÜÝY\	ÚÛ[ÉËÙ[\][ÛÜÛ\	Õ\ÝHÛYZÈY[È\ÚØ\Ú]ÛÝÚ[ÈÞX[Ú\È[\ÈXÚÙÜÝ[	ËJBÙ[XÝ
+
+BÚ[ÛJ
+BY
+\ÜHÝÈ\ÜÜX]]RYH]KYYÙÊ	Ú[Ù\	Ë	ÛÚÉËÝÈÜX]Y	ØÜX]]RYÛXÙJ
+_K
+BXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBHØ]Ú
+\HÂYÙÊ	Ú[Ù\	Ë	ÙZ[	Ë[Ù\Z[Y	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BÙ][[Ê[ÙJB]\BËÈ8¥ 8¥ Ý\Ù[\]HXHÛ[È8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YÙÊ	ÚÛ[ÉË	Ü[[ÉË	ÔÙ[[ÈÈÛ[ÈRKÊBHÂÛÛÝ\Ý[H]ØZ]Ù[\]P[Ø]PÜX]]JÂÜX]]RYÛ\	Õ\ÝHÛYZÈY[È\ÚØ\Ú]ÛÝÚ[ÈÞX[Ú\È[\ÈXÚÙÜÝ[	Ë\][Û	ÍIË[ÙN	ÜÝ	Ë\ÜXÝÜ][Î	ÌMIËÛ\[[TÝ]\Î
+Ý]\ÊHOÂY
+Ý]\ËÝ\OOH	ÙÙ[\][ÉÊHÂYÙÊ	ÚÛ[ÉË	Ü[[ÉËÝ]\ËY\ÜØYÙJBBKJBYÙÊ	ÚÛ[ÉË	ÛÚÉËY[ÈÙ[\]Y	Ü\Ý[Y[×Ý\ÛXÙJ
+
+_K
+BXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBHØ]Ú
+\HÂYÙÊ	ÚÛ[ÉË	ÙZ[	ËÛ[ÈZ[Y	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BÙ][[Ê[ÙJB]\BËÈ8¥ 8¥ Ý\Î\YHÝÈ8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YÙÊ	Ý\YKYË	Ü[[ÉË	ÐÚXÚÚ[ÈÝ\X\ÙHÝËÊBHÂÛÛÝÈ]NÝÈHH]ØZ]Ý\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊBÙ[XÝ
+	ÚYY[×Ý\Ý]\Ë]ÜWÜXYIÊB\J	ÚY	ËÜX]]RY
+BÚ[ÛJ
+BY
+ÝÏËY[×Ý\
+HÂYÙÊ	Ý\YKYË	ÛÚÉËÝÈÛÛ\YYY[×Ý\\Ù[Ý]\ÏIÜÝËÝ]\ßX
+BH[ÙHÂYÙÊ	Ý\YKYË	ÙZ[	Ë	ÑÝÈ^\ÝÈ]Y[×Ý\\È[	ÊBÙ][[Ê[ÙJB]\BHØ]Ú
+\HÂYÙÊ	Ý\YKYË	ÙZ[	ËÚXÚÈZ[Y	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BÙ][[Ê[ÙJB]\BËÈ8¥ 8¥ Ý\
+ÜÝÈÚ]\Ö8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YÙÊ	ÝÚ]\Ë	Ü[[ÉË	ÔÜÝ[ÈÈÚ]\ÖÊBHÂÛÛÝÙY]\Ý[H]ØZ]ÜÝÕÚ]\ÜX]]RY
+BY
+ÙY]\Ý[ÝXØÙ\ÜÊHÂYÙÊ	ÝÚ]\Ë	ÛÚÉËÙY]ÜÝY	ÝÙY]\Ý[ÜÝÝ\	ÛÈT]\Y	ßX
+BH[ÙHÂYÙÊ	ÝÚ]\Ë	ÙZ[	ËÚ]\Z[Y	ÝÙY]\Ý[\ÜX
+BBHØ]Ú
+\HÂYÙÊ	ÝÚ]\Ë	ÙZ[	ËÚ]\\Ü	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BBËÈ8¥ 8¥ ÛH8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YØÓÙÊ	ÕTÕTSSH8 %ÛÛ\]IÊBÙ][[Ê[ÙJBKØYÙËX×JBÛÛÝ[ÚÈHÙË[Ý	ÙË]\JOÝ]\ÈOOH	ÛÚÉÊBÛÛÝ\ÑZ[HÙËÛÛYJOÝ]\ÈOOH	ÙZ[	ÊB]\
+]Û\ÜÓ[YOHØ\YÛÝÈÜ\LÜ\Y\ÚYÜ\[[Z[K\[ÙKÌÌ]Û\ÜÓ[YOH^][\ËXÙ[\\ÝYKX]ÙY[MÜ\XÜ\[[Z[KXÜ\]Û\ÜÓ[YOH^][\ËXÙ[\Ø\L\ÝXLÚ^O^ÌMHÛ\ÜÓ[YOH^[[Z[K\[ÙHÏÜ[Û\ÜÓ[YOH^\ÛHÛXÛ^[[Z[K]^\[[H\ÝÜÜ[Ü[Û\ÜÓ[YOH^VÌLH^[[Z[KY[HÛ[[ÛÈÛ[È8¡¤Ý\X\ÙH8¡¤Ú]\ÜÜ[Ù]]ÛÛÛXÚÏ^Ü[\ÝB\ØXY^Ü[[ßBÛ\ÜÓ[YO^ØÛÞ
+	Ø\[ÙH^^ÈMKLKH^][\ËXÙ[\Ø\LKIË[[È		ÛÜXÚ]KMLÝ\ÛÜ[ÝX[ÝÙY	Ë
+_BÜ[[ÈÈØY\Ú^O^ÌLHÛ\ÜÓ[YOH[[X]K\Ü[Ï\ÝXLÚ^O^ÌLHÏBÜ[[ÈÈ	Ô[[ËÈ	Ô[\Ý	ßBØ]ÛÙ]ÛÙË[Ý	
+]Û\ÜÓ[YOHMÜXÙK^KLÛÙËX\
+
+JHO
+]Ù^O^Ú_HÛ\ÜÓ[YOH^][\Ë\Ý\Ø\L^^ÈÛ[[ÛÈÛÝ]\ÈOOH	ÛÚÉÈ	ÚXÚÐÚ\ÛHÚ^O^ÌLßHÛ\ÜÓ[YOH^[[Z[K\ÝXØÙ\ÜÈ^\Ú[ËL]LHÏBÛÝ]\ÈOOH	ÙZ[	È	Ú\ÛHÚ^O^ÌLßHÛ\ÜÓ[YOH^\YML^\Ú[ËL]LHÏBÛÝ]\ÈOOH	Ü[[ÉÈ	ØY\Ú^O^ÌLßHÛ\ÜÓ[YOH^[[Z[K\[ÙH[[X]K\Ü[^\Ú[ËL]LHÏBÛÝ]\ÈOOH	ÜÚÚ\	È	[\Ú\ÛHÚ^O^ÌLßHÛ\ÜÓ[YOH^[[Z[KYÛÛ^\Ú[ËL]LHÏB]Ü[Û\ÜÓ[YOH^[[Z[K]^Û\Ù[ZXÛÞÛÝ\WOÜÜ[ÉÈ	ßBÜ[Û\ÜÓ[YOH^[[Z[KY[HÛ\ÙßOÜÜ[Ù]Ù]
+J_BÈ\[[È	ÙË[Ý	
+]Û\ÜÓ[YO^ØÛÞ
+	Û]LÈLÈÝ[Y[È^^ÈÛXÛ^XÙ[\Ë[ÚÈ		ØË[[Z[K\ÝXØÙ\ÜËÌL^[[Z[K\ÝXØÙ\ÜÈÜ\Ü\[[Z[K\ÝXØÙ\ÜËÌÌ	Ë\ÑZ[		ØË\YMLÌL^\YMÜ\Ü\\YMLÌÌ	Ë
+_OØ[ÚÂÈ	ÕTÕTÔÑQÛ[È8¡¤Ý\X\ÙH8¡¤Ú]\Â	ÕTÕRSQ8 %ÚXÚÈÙÜÈXÝIßBÙ]
+_BÙ]
+_BÙ]
+BB¼¼RRR MÕµ½µÁ½¹¹ÑÌRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR )Õ¹Ñ¥½¸MÑÑÕÍ	¡ìÍÑÑÕÌôèìÍÑÑÕÌèÍÑÉ¥¹ô¤ì(½¹ÍÐµÀèI½ÉñÍÑÉ¥¹°ÍÑÉ¥¹øôì(±¥ÙèµÍÕÍÌ°(ÑÍÑ¥¹èµ½±°(ÉÐèµ±Õµ¥¹µµÕÑ¼ÈÀÑáÐµ±Õµ¥¹µ¥´°(ÁÕÍèµ¹È°(ô(ÉÑÕÉ¸ñÍÁ¸±ÍÍ9µõí±Íà °µÁmÍÑÑÕÍtüü¥ôùíÍÑÑÕÍôð½ÍÁ¸ø)ô()½¹ÍÐ%MQI%	UQ%=9}A1Q=I5Lôl(ì¹µèQ¥­Q½¬°¥½¸èÂ~:Ô°½±½Èè½ÉÈµÁ¥¹¬´ÔÀÀ¼ÌÀô°(ì¹µè%¹ÍÑÉ´°¥½¸èÂ~NÜ°½±½Èè½ÉÈµÁÕÉÁ±´ÔÀÀ¼ÌÀô°(ì¹µèe½ÕQÕ°¥½¸èZÓ¾â<°½±½Èè½ÉÈµÉ´ÔÀÀ¼ÌÀô°(ì¹µè1¥¹­%¸°¥½¸èÂ~Jð°½±½Èè½ÉÈµ±Õ´ÔÀÀ¼ÌÀô°(ì¹µèQÝ¥ÑÑÈ½`°¥½¸èrT°½±½Èè½ÉÈµÍ­ä´ÔÀÀ¼ÌÀô°(ì¹µè½½¬°¥½¸èÂ~N`°½±½Èè½ÉÈµ±Õ´ØÀÀ¼ÌÀô°(ì¹µèA¥¹ÑÉÍÐ°¥½¸èÂ~N0°½±½Èè½ÉÈµÉ´ÐÀÀ¼ÌÀô°(ì¹µèQ¡ÉÌ°¥½¸èÂ~Ô°½±½Èè½ÉÈµÉä´ÐÀÀ¼ÌÀô°)t()½¹ÍÐ
+IQ%Y}Q5A1QLôl(ìÑ¥Ñ±èAÉ½ÕÐQÍÑ¥µ½¹¥°P$Y½¥
+±½¹°Á±Ñ½É´èQ¥­Q½¬°Ñ½½°èÉÌô°(ìÑ¥Ñ±èAÉ½±´½M½±ÕÑ¥½¸!½½¬PMÑ½¬½½Ñ°Á±Ñ½É´è%¹ÍÑÉ´°Ñ½½°è-±¥¹ô°(ìÑ¥Ñ±è	½É½ÑÈQÉ¹Í½ÉµÑ¥½¸PUMÑå±°Á±Ñ½É´èe½ÕQÕ°Ñ½½°èÉÌô°(ìÑ¥Ñ±èDáÁ±¥¹ÈP$ÙÑÈ°Á±Ñ½É´è1¥¹­%¸°Ñ½½°è-±¥¹ô°(ìÑ¥Ñ±èQÉ¹¥¹M½Õ¹Iµ¥àPMÁ±¥ÐMÉ¸°Á±Ñ½É´èQ¥­Q½¬°Ñ½½°èÉÌô°(ìÑ¥Ñ±è
+ÕÍÑ½µÈMÑ½ÉäP
+¥¹µÑ¥µI½±°°Á±Ñ½É´è%¹ÍÑÉ´°Ñ½½°è-±¥¹ô°(ìÑ¥Ñ±èA¥¸A½¥¹Ð
+±±½ÕÐPQáÐ=ÙÉ±ä°Á±Ñ½É´èQÝ¥ÑÑÈ½`°Ñ½½°èÉÌô°(ìÑ¥Ñ±è!½ÜµQ¼QÕÑ½É¥°PMÉ¸I½É¥¹¬Y<°Á±Ñ½É´èe½ÕQÕ°Ñ½½°è-±¥¹ô°)t()½¹ÍÐQIQ}-e]=ILôl($Ù¥¼¹ÉÑ¥½¸°½¹Ñ¹ÐÕÑ½µÑ¥½¸°UÉÑ¥½¸°Ù¥É°µÉ­Ñ¥¹°(ÉÑ½ÈÑ½½±Ì°$½¹Ñ¹ÐÍÝÉ´°ÕÑ½µÑÍ½¥°µ¥°$µÉ­Ñ¥¹°)t(ËÈ8¥ 8¥ 8¥ Ù[\]HÜX]]H[Ù[8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ [Ý[ÛÙ[\]S[Ù[
+ÈÛÛÜÙKÛÙ[\]K\Ô[[Ë\[[TÝ]\ÈNÂÛÛÜÙN
+
+HOÚYÛÙ[\]N
+ÜÎÂ]NÝ[ÎÈ]ÜNÝ[ÎÈÛÛÝ[ÎÂÛ\ÎÝ[ÎÈ\][ÛÎ	ÍIÈ	ÌL	ÎÈ[ÙOÎ	ÜÝ	È	ÜÉÎÂ\ÜXÝÜ][ÏÎ	ÌMIÈ	ÎNMÈ	ÌNIÂJHOÚY\Ô[[ÎÛÛX[\[[TÝ]\Î\[[TÝ]\È[JHÂÛÛÝÜÙ[XÝYÙ]Ù[XÝYHH\ÙTÝ]J
+BÛÛÝØÝ\ÝÛU]KÙ]Ý\ÝÛU]WHH\ÙTÝ]J	ÉÊBÛÛÝØÝ\ÝÛTÛ\Ù]Ý\ÝÛTÛ\HH\ÙTÝ]J	ÉÊBÛÛÝÙ\][ÛÙ]\][ÛHH\ÙTÝ]O	ÍIÈ	ÌL	Ï	ÍIÊBÛÛÝÛ[ÙKÙ][ÙWHH\ÙTÝ]O	ÜÝ	È	ÜÉÏ	ÜÝ	ÊBÛÛÝØ\ÜXÝÙ]\ÜXÝHH\ÙTÝ]O	ÌMIÈ	ÎNMÈ	ÌNIÏ	ÌMIÊBÛÛÝ[\]HHÔPUUWÕSTUTÖÜÙ[XÝYBÛÛÝ]HHÝ\ÝÛU]K[J
+H[\]K]BÛÛÝ\ÒÛ[ÈH[\]KÛÛOOH	ÒÛ[ÉÂÛÛÝY][Û\HÜX]HHYÚ\]X[]H	Ý[\]K]Ü_HY[Î	Ý[\]K]_KÙ\ÜÚ[Û[YÚ[ËÛ[ÛÝ[Ý[Û[ØYÚ[ÈÜÛØÚX[YYXK]\
+]Û\ÜÓ[YOH^Y[Ù]LML^][\ËXÙ[\\ÝYKXÙ[\M]Û\ÜÓ[YOHXÛÛ]H[Ù]LËXXÚËÍÌXÚÙÜX\\ÛHÛÛXÚÏ^ÛÛÛÜÙ_HÏ]Û\ÜÓ[YOH[]]HËY[X^]Ë[ÈË[[Z[KXØ\Ü\Ü\[[Z[KXÜ\Ý[YLÚYÝËLÝ\ÝËZY[]Û\ÜÓ[YOH^][\ËXÙ[\\ÝYKX]ÙY[MHÜ\XÜ\[[Z[KXÜ\]]Û\ÜÓ[YOH^[[Z[K]^Û\Ù[ZXÛ^\ÛHÙ[\]H]ÈÜX]]OÙ]]Û\ÜÓ[YOH^[[Z[KY[H^^ÈÚ\ÒÛ[ÈÈ	ø¦¨HÛ[ÈRH8 %X[Y[ÈÙ[\][Û
+]JIÈ	Ð\ØYÈ[\]H8 %YÛIßBÙ]Ù]]ÛÛÛXÚÏ^ÛÛÛÜÙ_HÛ\ÜÓ[YOH^[[Z[K[]]YÝ\^[[Z[K]^LH\Ú^O^ÌMHÏØ]ÛÙ]]Û\ÜÓ[YOHMHÜXÙK^KMX^ZVÍLHÝ\ÝË^KX]]ÈËÊ\[[HÝ]\È[ÚYH[Ù[
+ßBÜ\[[TÝ]\È	\[[TÝ]\ËÝ\OOH	ÚYIÈ	
+\[[UXÚÙ\Ý]\Ï^Ü\[[TÝ]\ßHÏ
+_B]X[Û\ÜÓ[YOH^^È^[[Z[KY[HÛ[YY][HØÚÈXLÜX]]H[\]OÛX[]Û\ÜÓ[YOHÜYÜYXÛÛËLHØ\LÐÔPUUWÕSTUTËX\
+
+JHO
+]ÛÙ^O^Ú_BÛÛXÚÏ^Ê
+HOÈÙ]Ù[XÝY
+JNÈÙ]Ý\ÝÛU]J	ÉÊNÈÙ]Ý\ÝÛTÛ\
+	ÉÊH_BÛ\ÜÓ[YO^ØÛÞ
+	Ý^[Y^^ÈLÈÝ[Y[ÈÜ\[Ú][ÛX[	ËÙ[XÝYOOHBÈ	ØÜ\[[Z[K\[ÙHË[[Z[K\[ÙKÌL^[[Z[K\[ÙIÂ	ØÜ\[[Z[KXÜ\^[[Z[KY[HÝ\Ü\[[Z[K\[ÙKÍ	Ë
+_B]Û\ÜÓ[YOB&föçBÖÖVFVÒ#ç·BçFFÆWÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÕ³Ò×BÓãR÷6GÓs#à¢·BçÆFf÷&×ÒÂ·BçFööÇÐ¢·BçFööÂÓÓÒt¶Æærrbbr)ª&VÂfFVòwÐ¢ÂöFcà¢Âö'WGFöãà¢Ð¢ÂöFcà¢ÂöFcà ¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"ÓãR#à¢7W7FöÒFFÆRÇ7â6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVB#â÷FöæÂÂ÷7ãà¢ÂöÆ&VÃà¢ÆçW@¢GSÒ'FWB ¢fÇVS×¶7W7FöÕFFÆWÐ¢öä6ævS×¶RÓâ6WD7W7FöÕFFÆRRçF&vWBçfÇVRÐ¢Æ6VöÆFW#Ò&Rærât&Æ6²g&F6ÆR(	BTt2Ö6Wr ¢6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVB×ÂÓ2Ó"ãRFWB×2FWBÖÇVÖæ×FWBÆ6VöÆFW"ÖÇVÖæÖ×WFVBfö7W3¦÷WFÆæRÖæöæRfö7W3¦&÷&FW"ÖÇVÖæ×VÇ6RG&ç6FöâÖ6öÆ÷'2 ¢óà¢ÂöFcà ¢¶4¶Æærbb¢Ãà¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"ÓãR#à¢fFVò&ö×BÇ7â6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVB#â6VçBFò¶ÆærÂ÷7ãà¢ÂöÆ&VÃà¢ÇFWF&V¢fÇVS×¶7W7FöÕ&ö×GÐ¢öä6ævS×¶RÓâ6WD7W7FöÕ&ö×BRçF&vWBçfÇVRÐ¢Æ6VöÆFW#×¶FVfVÇE&ö×GÐ¢&÷w3×³7Ð¢6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVB×ÂÓ2Ó"ãRFWB×2FWBÖÇVÖæ×FWBÆ6VöÆFW"ÖÇVÖæÖ×WFVBfö7W3¦÷WFÆæRÖæöæRfö7W3¦&÷&FW"ÖÇVÖæ×VÇ6RG&ç6FöâÖ6öÆ÷'2&W6¦RÖæöæR ¢óà¢ÂöFcà¢ÆFb6Æ74æÖSÒ&w&Bw&BÖ6öÇ2Ó2vÓ2#à¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"Ó#äGW&FöãÂöÆ&VÃà¢Ç6VÆV7BfÇVS×¶GW&FöçÒöä6ævS×¶RÓâ6WDGW&FöâRçF&vWBçfÇVR2sRrÂsrÒ6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVBÖÆrÓ"ÓãRFWB×2FWBÖÇVÖæ×FWB#à¢Æ÷FöâfÇVSÒ#R#ãR6V6öæG3Âö÷Föãà¢Æ÷FöâfÇVSÒ##ã6V6öæG3Âö÷Föãà¢Â÷6VÆV7Cà¢ÂöFcà¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"Ó#åVÆGÂöÆ&VÃà¢Ç6VÆV7BfÇVS×¶ÖöFWÒöä6ævS×¶RÓâ6WDÖöFRRçF&vWBçfÇVR2w7FBrÂw&òrÒ6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVBÖÆrÓ"ÓãRFWB×2FWBÖÇVÖæ×FWB#à¢Æ÷FöâfÇVSÒ'7FB#å7FæF&CÂö÷Föãà¢Æ÷FöâfÇVSÒ'&ò#å&ò6Æ÷vW"Âö÷Föãà¢Â÷6VÆV7Cà¢ÂöFcà¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"Ó#ä7V7CÂöÆ&VÃà¢Ç6VÆV7BfÇVS×¶7V7GÒöä6ævS×¶RÓâ6WD7V7BRçF&vWBçfÇVR2sc£rÂs£brÂs£rÒ6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVBÖÆrÓ"ÓãRFWB×2FWBÖÇVÖæ×FWB#à¢Æ÷FöâfÇVSÒ#c£#ãc£ÆæG66SÂö÷Föãà¢Æ÷FöâfÇVSÒ#£b#ã£b÷'G&CÂö÷Föãà¢Æ÷FöâfÇVSÒ#£#ã£7V&SÂö÷Föãà¢Â÷6VÆV7Cà¢ÂöFcà¢ÂöFcà¢Âóà¢Ð ¢ÆFb6Æ74æÖSÒ&&rÖÇVÖæÖ&róc&÷VæFVBÖÆrÓ2FWB×2#à¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVBÖ"Ó#åvÆÂ7&VFS£ÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæ×FWBföçBÖÖVFVÒ#ç·FFÆWÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæÖFÒ×BÓãR#à¢·FV×ÆFRçÆFf÷&×ÒÂ·FV×ÆFRçFööÇÒÂ7FGW3¢G&g@¢¶4¶ÆærbbÂG¶GW&Föç×2ÂG¶ÖöFWÒÂG¶7V7GÖÐ¢ÂöFcà¢¶4¶Æærbb¢ÆFb6Æ74æÖSÒ&×BÓ"FWBÖÇVÖæ×VÇ6RFWBÕ³Ò#à¢)ª¶ÆærvF'&WG'ãÓ2Öâ(i"WFò×6fRFò7W&6P¢ÂöFcà¢Ð¢ÂöFcà¢ÂöFcà ¢ÆFb6Æ74æÖSÒ'ÓR&÷&FW"×B&÷&FW"ÖÇVÖæÖ&÷&FW"#à¢Æ'WGFöà¢öä6Æ6³×²ÓâöävVæW&FR°¢FFÆRÀ¢ÆFf÷&Ó¢FV×ÆFRçÆFf÷&ÒÀ¢FööÃ¢FV×ÆFRçFööÂÀ¢&ö×C¢7W7FöÕ&ö×BçG&ÒÇÂFVfVÇE&ö×BÀ¢GW&FöâÂÖöFRÂ7V7E÷&Fó¢7V7BÀ¢ÒÐ¢F6&ÆVC×¶5VæFæwÐ¢6Æ74æÖS×¶6Ç7¢v'Fâ×VÇ6RrÖgVÆÂfÆWFV×2Ö6VçFW"§W7FgÖ6VçFW"vÓ"Ó"ãRrÀ¢5VæFærbbv÷6GÓS7W'6÷"Öæ÷BÖÆÆ÷vVBrÀ¢Ð¢à¢Å¦6¦S×³7Ò6Æ74æÖS×¶5VæFæròvæÖFR×7âr¢rwÒóà¢¶5VæFæròt7&VFær7&VFfRâââr¢4¶Æærò~)ªvVæW&FRvF¶Æærr¢tvVæW&FR7&VFfRwÐ¢Âö'WGFöãà¢ÂöFcà¢ÂöFcà¢ÂöFcà¢§Ð // âââ Main component ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+export default function ContentSwarm() {
+  const { data: creatives = [], isLoading } = useUgcCreatives()
+  const { data: seoKeywords = [] } = useSeoKeywords()
+  const generateCreative = useGenerateCreative()
+  const deleteCreative = useDeleteCreative()
+  const updateStatus = useUpdateCreativeStatus()
+  const distributeCreative = useDistributeCreative()
+  const [showGenerateModal, setShowGenerateModal] = useState(false)
+  const [distributeResult, setDistributeResult] = useState<DistributeResponse | null>(null)
+  const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null)
+
+  const liveCreatives = creatives.filter((c) => c.status === 'live')
+  const videosReady = creatives.filter((c) => c.video_url).length
+  const videosGenerating = creatives.filter((c) => c.api_provider === 'kling' && !c.video_url && c.status === 'testing').length
+  const totalViews = creatives.reduce((s, c) => s + (c.views ?? 0), 0)
+  const roasItems  = creatives.filter((c) => (c.roas ?? 0) > 0)
+  const avgRoas    = roasItems.length ? roasItems.reduce((s, c) => s + c.roas, 0) / roasItems.length : 0
+  const rankedKeywords = seoKeywords.filter(k => k.position && k.position <= 10)
+  const seoScore = seoKeywords.length > 0 ? Math.round((rankedKeywords.length / Math.max(seoKeywords.length, 1)) * 100) : 0
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lumina-text font-bold text-xl">AI UGC + Content Swarm</h1>
+          <p className="text-lumina-dim text-sm">Kling AI | Auto-Distribution | 2x Retry | [UGC] Logging</p>
+        </div>
+        <button className="btn-pulse flex items-center gap-2" onClick={() => setShowGenerateModal(true)}>
+          <Zap size={14} />
+          Generate Creative
+        </button>
+      </div>
+
+      {/* Pipeline Status Tracker â shows when active */}
+      <PipelineTracker status={pipelineStatus} />
+
+      {/* Test Pipeline */}
+      <TestPipelinePanel />
+
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="card-glow text-center">
+          <div className="stat-label">Total Views</div>
+          <div className="stat-value text-lumina-pulse">
+            {totalViews > 0 ? `${(totalViews / 1000).toFixed(0)}k` : 'â'}
+          </div>
+        </div>
+        <div className="card-glow text-center">
+          <div className="stat-label">Avg ROAS</div>
+          <div className="stat-value text-lumina-gold">
+            {avgRoas > 0 ? `${avgRoas.toFixed(1)}x` : 'â'}
+          </div>
+        </div>
+        <div className="card-glow text-center">
+          <div className="stat-label">Live Creatives</div>
+          <div className="stat-value text-lumina-success">{liveCreatives.length}</div>
+        </div>
+        <div className="card-glow text-center">
+          <div className="stat-label">AI Videos</div>
+          <div className="stat-value text-lumina-pulse">
+            {videosReady}
+            {videosGenerating > 0 && (
+              <span className="text-xs text-lumina-dim ml-1">+{videosGenerating} gen</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Creatives list */}
@@ -495,39 +652,19 @@ export default function ContentSwarm() {
           <div className="text-center py-10 space-y-3">
             <Play size={28} className="text-lumina-border mx-auto" />
             <p className="text-lumina-dim text-sm">
-              No creatives yet. Add rows to the{' '}
-              <code className="text-lumina-pulse bg-lumina-surface px-1 rounded">ugc_creatives</code>{' '}
-              table in Supabase, or click{' '}
-              <span className="text-lumina-pulse">Generate Creative</span> to start.
+              No creatives yet. Click <span className="text-lumina-pulse">Generate Creative</span> to start,
+              or run the <span className="text-lumina-pulse">Pipeline Test</span> above.
             </p>
-            <a
-              href="https://supabase.com/dashboard/project/rjtxkjozlhvnxkzmqffk/editor"
-              target="_blank"
-              rel="noreferrer"
-              className="btn-ghost text-xs inline-flex items-center gap-1"
-            >
-              <Plus size={11} />
-              Add in Supabase
-            </a>
           </div>
         ) : (
           <div className="space-y-3">
             {creatives.map((c) => (
               <div key={c.id} className="p-3 bg-lumina-bg/60 rounded-xl flex flex-wrap items-center gap-3 group">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  {/* Video thumbnail or placeholder */}
                   {c.video_url ? (
-                    <a
-                      href={c.video_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-14 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden relative group/thumb hover:ring-2 ring-lumina-pulse transition-all"
-                      title="Open video"
-                    >
+                    <a href={c.video_url} target="_blank" rel="noreferrer" className="w-14 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden relative hover:ring-2 ring-lumina-pulse transition-all" title="Open video">
                       <Film size={14} className="text-lumina-success" />
-                      <div className="absolute bottom-0 right-0 bg-lumina-success/90 text-[8px] text-white px-1 rounded-tl">
-                        READY
-                      </div>
+                      <div className="absolute bottom-0 right-0 bg-lumina-success/90 text-[8px] text-white px-1 rounded-tl">READY</div>
                     </a>
                   ) : c.api_provider === 'kling' && c.status === 'testing' ? (
                     <div className="w-14 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0 animate-pulse">
@@ -542,264 +679,307 @@ export default function ContentSwarm() {
                     <div className="text-sm text-lumina-text font-medium truncate">{c.title}</div>
                     <div className="text-xs text-lumina-dim">
                       {c.platform} | {c.tool}
-                      {c.api_provider === 'kling' && c.video_url && (
-                        <span className="text-lumina-success ml-1">| Video ready</span>
-                      )}
-                      {c.api_provider === 'kling' && !c.video_url && c.status === 'testing' && (
-                        <span className="text-lumina-pulse ml-1">| Generating...</span>
-                      )}
-                      {c.platform_ready && (
-                        <span className="text-lumina-gold ml-1">| Platform-ready</span>
-                      )}
+                      {c.api_provider === 'kling' && c.video_url && <span className="text-lumina-success ml-1">| Video ready</span>}
+                      {c.api_provider === 'kling' && !c.video_url && c.status === 'testing' && <span className="text-lumina-pulse ml-1">| Generating...</span>}
+                      {c.distributed_to && c.distributed_to.length > 0 && <span className="text-lumina-gold ml-1">| Distributed: {c.distributed_to.join(', ')}</span>}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs font-mono">
-                  {(c.views ?? 0) > 0 && (
-                    <>
-                      <span className="text-lumina-dim">{(c.views / 1000).toFixed(0)}k views</span>
-                      <span className="text-lumina-text">{c.ctr}% CTR</span>
-                      <span className={clsx('font-semibold', c.roas >= 2 ? 'text-lumina-success' : 'text-lumina-warning')}>
-                        {c.roas}x ROAS
-                      </span>
-                    </>
-                  )}
+                <div className="flex items-center gap-3 text×2föçBÖÖöæò#à¢²2çfWw2óòâbb¢Ãà¢Ç7â6Æ74æÖSÒ'FWBÖÇVÖæÖFÒ#ç²2çfWw2òçFôfVBÖ²fWw3Â÷7ãà¢Ç7â6Æ74æÖSÒ'FWBÖÇVÖæ×FWB#ç¶2æ7G'ÒR5E#Â÷7ãà¢Ç7â6Æ74æÖS×¶6Ç7vföçB×6VÖ&öÆBrÂ2ç&ö2ãÒ"òwFWBÖÇVÖæ×7V66W72r¢wFWBÖÇVÖæ×v&æærrÓç¶2ç&ö7×$ô3Â÷7ãà¢Âóà¢Ð¢¶2çfFVõ÷W&Âbb¢Æ&Vc×¶2çfFVõ÷W&ÇÒF&vWCÒ%ö&Ææ²"&VÃÒ&æ÷&VfW'&W""6Æ74æÖSÒ'FWBÖÇVÖæ×VÇ6R÷fW#§FWBÖÇVÖæ×VÇ6Ró"FFÆSÒ$÷VâfFVò#à¢ÄWFW&æÄÆæ²6¦S×³'Òóà¢Âöà¢Ð¢Æ'WGFöà¢öä6Æ6³×²Óâ°¢6öç7BæWC¢&V6÷&CÇ7G&ærÂVv47&VFfU²w7FGW2uÓâÒ²G&gC¢wFW7FærrÂFW7Fæs¢vÆfRrÂÆfS¢wW6VBrÂW6VC¢vG&gBrÐ¢föBWFFU7FGW2æ×WFFR²C¢2æBÂ7FGW3¢æWE¶2ç7FGW5ÒóòvG&gBrÒ¢×Ð¢FFÆS×¶6Æ6²FòGfæ6R7FGW2G¶2ç7FGW7ÒÐ¢F6&ÆVC×·WFFU7FGW2æ5VæFæwÐ¢à¢Å7FGW4&FvR7FGW3×¶2ç7FGW7Òóà¢Âö'WGFöãà¢¶2ç7FGW2ÓÓÒvÆfRrbb¢Æ'WGFöà¢öä6Æ6³×²ÓâF7G&'WFT7&VFfRæ×WFFR2æBÂ²öå7V66W73¢&W2Óâ6WDF7G&'WFU&W7VÇB&W2ÒÐ¢F6&ÆVC×¶F7G&'WFT7&VFfRæ5VæFæwÐ¢6Æ74æÖSÒ'FWBÖÇVÖæ×VÇ6R÷fW#§FWBÖÇVÖæ×VÇ6RófÆWFV×2Ö6VçFW"vÓFWBÕ³ÒföçB×6VÖ&öÆB ¢FFÆSÒ$F7G&'WFRFòÆÂÆFf÷&×2 ¢à¢¶F7G&'WFT7&VFfRæ5VæFæròÄÆöFW#"6¦S×³Ò6Æ74æÖSÒ&æÖFR×7â"óâ¢ÄvÆö&R6¦S×³ÒóçÐ¢F7G&'WFP¢Âö'WGFöãà¢Ð¢Æ'WGFöà¢öä6Æ6³×²Óâ²bvæF÷ræ6öæf&ÒFVÆWFR"G¶2çFFÆWÒ#öföBFVÆWFT7&VFfRæ×WFFR2æB×Ð¢6Æ74æÖSÒ&÷6GÓw&÷WÖ÷fW#¦÷6GÓG&ç6FöâÖ÷6GFWBÖÇVÖæÖ×WFVB÷fW#§FWBÖÇVÖæÖFævW" ¢FFÆSÒ$FVÆWFR7&VFfR ¢à¢ÅG&6"6¦S×³'Òóà¢Âö'WGFöãà¢ÂöFcà¢ÂöFcà¢Ð¢ÂöFcà¢Ð¢ÂöFcà ¢²ò¢F7G&'WFöâ6ææVÇ2¢÷Ð¢ÆFb6Æ74æÖSÒ&6&BÖvÆ÷r#à¢ÆFb6Æ74æÖSÒ'6V7FöâÖVFW"#à¢ÄvÆö&R6¦S×³GÒóà¢WFòÔF7G&'WFöâ6ææVÇ0¢ÂöFcà¢¶F7G&'WFU&W7VÇBbb¢ÆFb6Æ74æÖSÒ'Ó2Ö"Ó2&rÖÇVÖæ×7V66W72ó&÷&FW"&÷&FW"ÖÇVÖæ×7V66W72ó3&÷VæFVBÖÆrFWB×2FWBÖÇVÖæ×FWBfÆWFV×2×7F'B§W7FgÖ&WGvVVâ#à¢ÆFcà¢ÆFb6Æ74æÖSÒ&föçB×6VÖ&öÆBfÆWFV×2Ö6VçFW"vÓãRÖ"Ó#à¢Ä6V6´6&6ÆR6¦S×³'Ò6Æ74æÖSÒ'FWBÖÇVÖæ×7V66W72"óà¢F7G&'WFVBFò¶F7G&'WFU&W7VÇBç7V66W76gVÇÒ÷¶F7G&'WFU&W7VÇBçF÷FÇÒÆFf÷&×0¢ÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæÖFÒ76R×Ó"#à¢¶F7G&'WFU&W7VÇBç&W7VÇG2æÖ"Óâ¢Ç7â¶W×·"çÆFf÷&×Ò6Æ74æÖS×·"ç7V66W72òwFWBÖÇVÖæ×7V66W72r¢wFWBÖÇVÖæÖFævW"wÓà¢·"ç7V66W72ò~)É2r¢~)ÉrwÒ·"çÆFf÷&×Ð¢Â÷7ãà¢Ð¢ÂöFcà¢ÂöFcà¢Æ'WGFöâöä6Æ6³×²Óâ6WDF7G&'WFU&W7VÇBçVÆÂÒ6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVB÷fW#§FWBÖÇVÖæ×FWBÖÂÓ"#î)ÉSÂö'WGFöãà¢ÂöFcà¢Ð¢ÆFb6Æ74æÖSÒ&w&Bw&BÖ6öÇ2Ó"ÖC¦w&BÖ6öÇ2ÓBvÓ"#à¢´D5E$%UDôåõÄDdõ$Õ2æÖÓâ¢ÆFb¶W×·ææÖWÒ6Æ74æÖS×¶6Ç7wÓ2&÷VæFVBÖÆr&÷&FW"&rÖÇVÖæÖ&róCFWBÖ6VçFW"G&ç6FöâÖÆÂ÷fW#¦&÷&FW"ÖÇVÖæ×VÇ6RóCrÂæ6öÆ÷"Óà¢ÆFb6Æ74æÖSÒ'FWBÖÆrÖ"Ó#ç·æ6öçÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWB×2FWBÖÇVÖæ×FWBföçBÖÖVFVÒ#ç·ææÖWÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæ×7V66W72×BÓãR#äVæ&ÆVCÂöFcà¢ÂöFcà¢Ð¢ÂöFcà¢ÂöFcà ¢²ò¢4Tò÷FÖ¦W"¢÷Ð¢ÆFb6Æ74æÖSÒ&6&BÖvÆ÷r#à¢ÆFb6Æ74æÖSÒ'6V7FöâÖVFW"#à¢ÅG&VæFæuW6¦S×³GÒóà¢4Tò÷FÖ¦W"(	B¶Wv÷&BG&6¶æp¢ÂöFcà¢ÆFb6Æ74æÖSÒ&fÆWFV×2Ö6VçFW"§W7FgÖ&WGvVVâÖ"ÓB#à¢Ç7â6Æ74æÖSÒ'FWB×6ÒFWBÖÇVÖæÖFÒ#ä7W'&VçB4Tò66÷&SÂ÷7ãà¢Ç7â6Æ74æÖS×¶6Ç7wFWB×ÂföçBÖ&öÆBföçBÖÖöæòrÂ6Võ66÷&RãÒsòwFWBÖÇVÖæ×7V66W72r¢6Võ66÷&RãÒCòwFWBÖÇVÖæÖvöÆBr¢wFWBÖÇVÖæÖFævW"rÓç·6Võ66÷&WÒóÂ÷7ãà¢ÂöFcà¢ÆFb6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷VæFVBÖgVÆÂÓ"Ö"ÓB÷fW&fÆ÷rÖFFVâ#à¢ÆFb6Æ74æÖS×¶6Ç7vÖgVÆÂ&÷VæFVBÖgVÆÂG&ç6FöâÖÆÂGW&FöâÓsrÂ6Võ66÷&RãÒsòv&rÖÇVÖæ×7V66W72r¢6Võ66÷&RãÒCòv&rÖÇVÖæÖvöÆBr¢v&rÖÇVÖæÖFævW"rÒ7GÆS×·²vGF¢G·6Võ66÷&WÒV×Òóà¢ÂöFcà¢·6Vô¶Wv÷&G2æÆVæwFâò¢ÆFb6Æ74æÖSÒ'76R×Ó"Ö"ÓB#à¢ÆFb6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçB×6VÖ&öÆBfÆWFV×2Ö6VçFW"vÓãR#ãÅ6V&66¦S×³ÒóåG&6¶VB¶Wv÷&G3ÂöFcà¢ÆFb6Æ74æÖSÒ'76R×Ó#à¢·6Vô¶Wv÷&G2æÖ²Óâ¢ÆFb¶W×¶²æGÒ6Æ74æÖSÒ&fÆWFV×2Ö6VçFW"§W7FgÖ&WGvVVâFWB×2ÓãR&÷&FW"Ö"&÷&FW"ÖÇVÖæÖ&÷&FW"óCÆ7C¦&÷&FW"Ó#à¢Ç7â6Æ74æÖSÒ'FWBÖÇVÖæ×FWBföçBÖÖVFVÒ#ç¶²æ¶Wv÷&GÓÂ÷7ãà¢ÆFb6Æ74æÖSÒ&fÆWFV×2Ö6VçFW"vÓBföçBÖÖöæò#à¢¶²ç÷6FöâbbÇ7â6Æ74æÖS×¶6Ç7²ç÷6FöâÃÒ2òwFWBÖÇVÖæ×7V66W72r¢²ç÷6FöâÃÒòwFWBÖÇVÖæÖvöÆBr¢wFWBÖÇVÖæÖFÒrÓâ7¶²ç÷6FöçÓÂ÷7ãçÐ¢¶²çföÇVÖRbbÇ7â6Æ74æÖSÒ'FWBÖÇVÖæÖFÒ#ç¶²çföÇVÖRçFôÆö6ÆU7G&ærÒföÃÂ÷7ãçÐ¢¶²çW&ÂbbÆ&Vc×¶²çW&ÇÒF&vWCÒ%ö&Ææ²"&VÃÒ&æ÷&VfW'&W""6Æ74æÖSÒ'FWBÖÇVÖæ×VÇ6R÷fW#§FWBÖÇVÖæ×VÇ6Ró#ãÄWFW&æÄÆæ²6¦S×³ÒóãÂöçÐ¢ÂöFcà¢ÂöFcà¢Ð¢ÂöFcà¢ÂöFcà¢¢¢ÆFb6Æ74æÖSÒ&Ö"ÓB#à¢ÆFb6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçB×6VÖ&öÆBfÆWFV×2Ö6VçFW"vÓãRÖ"Ó"#ãÅ6V&66¦S×³Òóä¶Wv÷&G2&VærF&vWFVCÂöFcà¢ÆFb6Æ74æÖSÒ&fÆWfÆW×w&vÓ"#à¢µD$tUEô´Utõ$E2æÖ·rÓâ¢Ç7â¶W×¶·wÒ6Æ74æÖSÒ'Ó"Ó&÷VæFVBÖÖB&rÖÇVÖæ×VÇ6Ró&÷&FW"&÷&FW"ÖÇVÖæ×VÇ6Ró#FWBÖÇVÖæ×VÇ6RFWB×2föçBÖÖöæò#ç¶·wÓÂ÷7ãà¢Ð¢ÂöFcà¢ÂöFcà¢Ð¢ÂöFcà ¢²ò¢vVæW&FR7&VFfRÖöFÂ¢÷Ð¢·6÷tvVæW&FTÖöFÂbb¢ÄvVæW&FTÖöFÀ¢öä6Æ÷6S×²Óâ6WE6÷tvVæW&FTÖöFÂfÇ6RÐ¢5VæFæs×¶vVæW&FT7&VFfRæ5VæFæwÐ¢VÆæU7FGW3×·VÆæU7FGW7Ð¢öävVæW&FS×²÷G2Óâ°¢vVæW&FT7&VFfRæ×WFFR¢°¢FFÆS¢÷G2çFFÆRÀ¢ÆFf÷&Ó¢÷G2çÆFf÷&ÒÀ¢FööÃ¢÷G2çFööÂÀ¢&ö×C¢÷G2ç&ö×BÀ¢GW&Föã¢÷G2æGW&FöâÀ¢ÖöFS¢÷G2æÖöFRÀ¢7V7E÷&Fó¢÷G2æ7V7E÷&FòÀ¢öåVÆæU7FGW3¢6WEVÆæU7FGW2À¢ÒÀ¢²öå7V66W73¢Óâ6WE6÷tvVæW&FTÖöFÂfÇ6RÒÀ¢¢×Ð¢óà¢Ð¢ÂöFcà¢§Ðâââââââââââ
+function useUgcCreatives() {
+  const qc = useQueryClient()
 
-                  {/* Video link if available */}
-                  {c.video_url && (
-                    <a
-                      href={c.video_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-lumina-pulse hover:text-lumina-pulse/80"
-                      title="Open video"
-                    >
-                      <ExternalLink size={12} />
-                    </a>
-                  )}
+  // Auto-refresh on realtime INSERT/UPDATE
+  useEffect(() => {
+    const channel = supabase
+      .channel('ugc_creatives_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ugc_creatives' },
+        (payload) => {
+          ugcLog('realtime update', { event: payload.eventType, id: (payload.new as Record<string, unknown>)?.id })
+          qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
+        }
+      )
+      .subscribe()
 
-                  {/* Status cycle: draft → testing → live → paused */}
-                  <button
-                    onClick={() => {
-                      const next: Record<string, UgcCreative['status']> = {
-                        draft: 'testing', testing: 'live', live: 'paused', paused: 'draft',
-                      }
-                      void updateStatus.mutate({ id: c.id, status: next[c.status] ?? 'draft' })
-                    }}
-                    title={`Click to advance status (${c.status})`}
-                    disabled={updateStatus.isPending}
-                  >
-                    <StatusBadge status={c.status} />
-                  </button>
+    return () => { supabase.removeChannel(channel) }
+  }, [qc])
 
-                  {/* Distribute — only for live creatives */}
-                  {c.status === 'live' && (
-                    <button
-                      onClick={() => {
-                        distributeCreative.mutate(c.id, {
-                          onSuccess: (res) => setDistributeResult(res),
-                        })
-                      }}
-                      disabled={distributeCreative.isPending}
-                      className="text-lumina-pulse hover:text-lumina-pulse/80 flex items-center gap-1 text-[10px] font-semibold"
-                      title="Distribute to all platforms"
-                    >
-                      {distributeCreative.isPending ? (
-                        <Loader2 size={11} className="animate-spin" />
-                      ) : (
-                        <Globe size={11} />
-                      )}
-                      Distribute
-                    </button>
-                  )}
+  return useQuery<UgcCreative[]>({
+    queryKey: ['ugc_creatives'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ugc_creatives')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (error) {
+        console.warn('[UGC] ugc_creatives query:', error.message)
+        return []
+      }
+      return data ?? []
+    },
+    staleTime: 30_000,
+  })
+}
 
-                  {/* Delete */}
-                  <button
-                    onClick={() => {
-                      if (window.confirm(`Delete "${c.title}"?`)) {
-                        void deleteCreative.mutate(c.id)
-                      }
-                    }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-lumina-muted hover:text-lumina-danger"
-                    title="Delete creative"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+function useSeoKeywords() {
+  return useQuery<SeoKeyword[]>({
+    queryKey: ['seo_keywords'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('seo_keywords')
+        .select('*')
+        .order('position', { ascending: true, nullsFirst: false })
+      if (error) {
+        console.warn('[UGC] seo_keywords:', error.message)
+        return []
+      }
+      return data ?? []
+    },
+    staleTime: 120_000,
+  })
+}
+ËÈ8¥ 8¥ 8¥ Ù[\]HÜX]]H]]][Û8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ [Ý[Û\ÙQÙ[\]PÜX]]J
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
 
-      {/* Distribution channels */}
-      <div className="card-glow">
-        <div className="section-header">
-          <Globe size={14} />
-          Auto-Distribution Channels
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+ÜÎÂ]NÝ[Â]ÜNÝ[ÂÛÛÝ[ÂÛ\ÎÝ[Â\][ÛÎ	ÍIÈ	ÌL	Â[ÙOÎ	ÜÝ	È	ÜÉÂ\ÜXÝÜ][ÏÎ	ÌMIÈ	ÎNMÈ	ÌNIÂÛÙÜ\ÜÏÎ
+Ý]\ÎÝ[ÊHOÚYÛ\[[TÝ]\ÏÎ
+Ý]\Î\[[TÝ]\ÊHOÚYJHOÂYØÓÙÊ	ÜÝ\8 %[Ù\[ÈYÝÉÊBÛÛÝÈ]NÜX]]K\ÜHH]ØZ]Ý\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊB[Ù\
+Â]NÜË]K]ÜNÜË]ÜKÝ]\Î	ÙY	ËY]ÜÎÝØ\ÎÛÛÜËÛÛ\WÜÝY\	ÚÛ[ÉËÙ[\][ÛÜÛ\ÜËÛ\ÜË]KJBÙ[XÝ
+
+BÚ[ÛJ
+BY
+\ÜHÝÈ\ÜYØÓÙÊ	ÙYÝÈÜX]Y	ËÈYÜX]]KY]NÜX]]K]HJBY
+ÜËÛÛOOH	ÒÛ[ÉÊHÂËÈ\HÛ[ÈÙ[\][Û8 %Õ]XÚYÙH]ØZ]]ÜÝ]\ÈXÚÚ[ÂÙ[\]P[Ø]PÜX]]JÂÜX]]RYÜX]]KYÛ\ÜËÛ\ÜË]K\][ÛÜË\][Û	ÍIË[ÙNÜË[ÙH	ÜÝ	Ë\ÜXÝÜ][ÎÜË\ÜXÝÜ][È	ÌMIËÛÙÜ\ÜÎÜËÛÙÜ\ÜËÛ\[[TÝ]\ÎÜËÛ\[[TÝ]\ËJK[
+
+HOÂXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBJKØ]Ú
+
+\HOÂYØÓÙÊ	Ü\[[H\ÜËÈ\Ü\Y\ÜØYÙKÜX]]RYÜX]]KYJBÝ\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊB\]JÈÝ]\Î	Ü]\ÙY	ÈJB\J	ÚY	ËÜX]]KY
+B[
+
+HOXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJJBJBB]\ÜX]]BKÛÝXØÙ\ÜÎ
+
+HOÂXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBKJBB[Ý[Û\ÙQ[]PÜX]]J
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
+
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+YÝ[ÊHOÂÛÛÝÈ\ÜHH]ØZ]Ý\X\ÙKÛJ	ÝYØ×ØÜX]]\ÉÊK[]J
+K\J	ÚY	ËY
+BY
+\ÜHÝÈ\ÜKÛÝXØÙ\ÜÎ
+
+HOÈXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJHKJBB[Ý[Û\ÙU\]PÜX]]TÝ]\Ê
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
+
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+ÈYÝ]\ÈNÈYÝ[ÎÈÝ]\ÎYØÐÜX]]VÉÜÝ]\É×HJHOÂÛÛÝÈ\ÜHH]ØZ]Ý\X\ÙKÛJ	ÝYØ×ØÜX]]\ÉÊK\]JÈÝ]\ÈJK\J	ÚY	ËY
+BY
+\ÜHÝÈ\ÜKÛÝXØÙ\ÜÎ
+
+HOÈXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJHKJBB[Ý[Û\ÙQ\ÝX]PÜX]]J
+HÂÛÛÝXÈH\ÙT]Y\PÛY[
+
+B]\\ÙS]]][ÛÂ]]][Û\Þ[È
+ÜX]]RYÝ[ÊNÛZ\ÙO\ÝX]T\ÜÛÙOOÂÛÛÝ\Ý[H]ØZ]\ÝX]UÐ[
+ÜX]]RY
+BXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJB]\\Ý[KJBB¼¼RRR A¥Á±¥¹MÑÑÕÌQÉ­È
+½µÁ½¹¹ÐRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR )Õ¹Ñ¥½¸A¥Á±¥¹QÉ­È¡ìÍÑÑÕÌôèìÍÑÑÕÌèA¥Á±¥¹MÑÑÕÌð¹Õ±°ô¤ì(¥ ÍÑÑÕÌñðÍÑÑÕÌ¹ÍÑÀôôô¥±¤ÉÑÕÉ¸¹Õ±°((½¹ÍÐÍÑÁÌèì­äèÍÑÉ¥¹ì±°èÍÑÉ¥¹õmtôl(ì­äè¹ÉÑ¥¹°±°è¹ÉÑ¥¹ô°(ì­äèÍÙ¥¹°±°èMÙ¥¹ô°(ì­äèÁ½ÍÑ¥¹°±°èA½ÍÑ¥¹ô°(ì­äè½µÁ±Ñ°±°è
+½µÁ±Ñô°(t((½¹ÍÐÕÉÉ¹Ñ%àôÍÑÁÌ¹¥¹%¹à¡ÌôøÌ¹­äôôôÍÑÑÕÌ¹ÍÑÀ¤(½¹ÍÐ¥ÍÉÉ½ÈôÍÑÑÕÌ¹ÍÑÀôôôÉÉ½È((ÉÑÕÉ¸ (ñ¥Ø±ÍÍ9µõí±Íà (Éµ±½ÜÀ´Ð½ÉÈµ°´Ð°(¥ÍÉÉ½Èü½ÉÈµ°µÉ´ÔÀÀµÉ´ÔÀÀ¼Ôè½ÉÈµ°µ±Õµ¥¹µÁÕ±Íµ±Õµ¥¹µÁÕ±Í¼Ô(¥ôø(ñ¥Ø±ÍÍ9µô±à¥ÑµÌµ¹ÑÈÀ´Èµ´Ìø(í¥ÍÉÉ½Èü (ña
+¥É±Í¥éõìÄÙô±ÍÍ9µôÑáÐµÉ´ÔÀÀ¼ø(¤èÍÑÑÕÌ¹ÍÑÀôôô½µÁ±Ñü (ñ
+¡­
+¥É±Í¥éõìÄÙô±ÍÍ9µôÑáÐµ±Õµ¥¹µÍÕÍÌ¼ø(¤è (ñ1½ÈÈÍ¥éõìÄÙô±ÍÍ9µôÑáÐµ±Õµ¥¹µÁÕ±Í¹¥µÑµÍÁ¥¸¼ø(¥ô(ñÍÁ¸±ÍÍ9µôÑáÐµÍ´½¹ÐµÍµ¥½±ÑáÐµ±Õµ¥¹µÑáÐø(í¥ÍÉÉ½ÈüA¥Á±¥¹¥±èÍÑÑÕÌ¹ÍÑÀôôô½µÁ±ÑüA¥Á±¥¹
+½µÁ±ÑèA¥Á±¥¹IÕ¹¹¥¹ô(ð½ÍÁ¸ø(ð½¥Øø((ì¼¨MÑÀ¥¹¥Ñ½ÉÌ¨½ô(ñ¥Ø±ÍÍ9µô±à¥ÑµÌµ¹ÑÈÀ´Äµ´Ìø(íÍÑÁÌ¹µÀ ¡Ì°¤¤ôøì(½¹ÍÐ½¹ô¥ÍÉÉ½È¡ÕÉÉ¹Ñ%àø¤ñðÍÑÑÕÌ¹ÍÑÀôôô½µÁ±Ñ¤(½¹ÍÐÑ¥Ùô¥ÍÉÉ½ÈÕÉÉ¹Ñ%àôôô¤ÍÑÑÕÌ¹ÍÑÀôô½µÁ±Ñ(ÉÑÕÉ¸ (ñ¥Ø­äõíÌ¹­åô±ÍÍ9µô±à¥ÑµÌµ¹ÑÈÀ´Ä±à´Äø(ñ¥Ø±ÍÍ9µõí±Íà (±à¥ÑµÌµ¹ÑÈÀ´Ä¸ÔÁà´ÈÁä´ÄÉ½Õ¹µµÑáÐµlÄÁÁát½¹ÐµÍµ¥½±±à´ÄÑáÐµ¹ÑÈ©ÕÍÑ¥äµ¹ÑÈ°(½¹µ±Õµ¥¹µÍÕÍÌ¼ÈÀÑáÐµ±Õµ¥¹µÍÕÍÌ°(Ñ¥Ùµ±Õµ¥¹µÁÕ±Í¼ÈÀÑáÐµ±Õµ¥¹µÁÕ±Í¹¥µÑµÁÕ±Í°(½¹Ñ¥Ùµ±Õµ¥¹µÑáÐµ±Õµ¥¹µµÕÑ°(¥ôø(í½¹ñ
+¡­
+¥É±Í¥éõìÄÁô¼ùô(íÑ¥Ùñ1½ÈÈÍ¥éõìÄÁô±ÍÍ9µô¹¥µÑµÍÁ¥¸¼ùô(íÌ¹±±ô(ð½¥Øø(í¤ðÍÑÁÌ¹±¹Ñ ´Ä (ñÉÉ½ÝI¥¡ÐÍ¥éõìÄÁô±ÍÍ9µõí±Íà (½¹üÑáÐµ±Õµ¥¹µÍÕÍÌèÑáÐµ±Õµ¥¹µµÕÑ°(¥ô¼ø(¥ô(ð½¥Øø(¤(ô¥ô(ð½¥Øø((ì¼¨MÑÑÕÌµÍÍ¨½ô(ñ¥Ø±ÍÍ9µôÑáÐµáÌÑáÐµ±Õµ¥¹µ¥´½¹Ðµµ½¹¼ø(íÍÑÑÕÌ¹µÍÍô(íÍÑÑÕÌ¹Ñ¥°ñÍÁ¸±ÍÍ9µôÑáÐµ±Õµ¥¹µµÕÑµ°´Äø¡íÍÑÑÕÌ¹Ñ¥±ô¤ð½ÍÁ¸ùô(ð½¥Øø(ð½¥Øø(¤)ô((¼¼RRR QÍÐA¥Á±¥¹	ÕÑÑ½¸¬5½°RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR )Õ¹Ñ¥½¸QÍÑA¥Á±¥¹A¹° ¤ì(½¹ÍÐÅôÕÍEÕÉå
+±¥¹Ð ¤(½¹ÍÐmÉÕ¹¹¥¹°ÍÑIÕ¹¹¥¹tôÕÍMÑÑ¡±Í¤(½¹ÍÐm±½°ÍÑ1½tôÕÍMÑÑñÉÉäñìÍÑÀèÍÑÉ¥¹ìÍÑÑÕÌè½¬ð¥°ðÍ­¥ÀðÉÕ¹¹¥¹ìµÍèÍÑÉ¥¹ôøø¡mt¤((½¹ÍÐ1½ôÕÍ
+±±¬ ¡ÍÑÀèÍÑÉ¥¹°ÍÑÑÕÌè½¬ð¥°ðÍ­¥ÀðÉÕ¹¹¥¹°µÍèÍÑÉ¥¹¤ôøì(ÍÑ1½¡ÁÉØôøì(¼¼UÁÑá¥ÍÑ¥¹ÍÑÀ¥ÉÕ¹¹¥¹°½Ñ¡ÉÝ¥Í¹Ü(½¹ÍÐ¥àôÁÉØ¹¥¹%¹à¡°ôø°¹ÍÑÀôôôÍÑÀ°¹ÍÑÑÕÌôôôÉÕ¹¹¥¹¤(¥¡¥àøôÀ¤ì(½¹ÍÐ¹áÐôl¸¸¹ÁÉÙt(¹áÑm¥átôìÍÑÀ°ÍÑÑÕÌ°µÍô(ÉÑÕÉ¸¹áÐ(ô(ÉÑÕÉ¸l¸¸¹ÁÉØ°ìÍÑÀ°ÍÑÑÕÌ°µÍõt(ô¤(ô°mt¤((½¹ÍÐÉÕ¹QÍÐôÕÍ
+±±¬¡Íå¹ ¤ôøì(ÍÑIÕ¹¹¥¹¡ÑÉÕ¤(ÍÑ1½¡mt¤(Õ1½ QMPA%A1%9PÍÑÉÑ¥¹Õ±°±½Ü¤((¼¼RR MÑÀÄè%¹ÍÉÐÑÍÐÉÑ¥ÙRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR (YÙÊ	Ú[Ù\	Ë	Ü[[ÉË	Ò[Ù\[È\ÝÜX]]HÝËÊB]ÜX]]RYÝ[È[H[HÂÛÛÝÈ]K\ÜHH]ØZ]Ý\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊB[Ù\
+Â]NÕTÕH\[[H\Ý	Û]È]J
+KÒTÓÔÝ[Ê
+KÛXÙJLKNJ_X]ÜN	ÕÚ]\Ö	ËÝ]\Î	ÙY	ËY]ÜÎÝØ\ÎÛÛ	ÒÛ[ÉË\WÜÝY\	ÚÛ[ÉËÙ[\][ÛÜÛ\	Õ\ÝHÛYZÈY[È\ÚØ\Ú]ÛÝÚ[ÈÞX[Ú\È[\ÈXÚÙÜÝ[	ËJBÙ[XÝ
+
+BÚ[ÛJ
+BY
+\ÜHÝÈ\ÜÜX]]RYH]KYYÙÊ	Ú[Ù\	Ë	ÛÚÉËÝÈÜX]Y	ØÜX]]RYÛXÙJ
+_K
+BXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBHØ]Ú
+\HÂYÙÊ	Ú[Ù\	Ë	ÙZ[	Ë[Ù\Z[Y	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BÙ][[Ê[ÙJB]\BËÈ8¥ 8¥ Ý\Ù[\]HXHÛ[È8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YÙÊ	ÚÛ[ÉË	Ü[[ÉË	ÔÙ[[ÈÈÛ[ÈRKÊBHÂÛÛÝ\Ý[H]ØZ]Ù[\]P[Ø]PÜX]]JÂÜX]]RYÛ\	Õ\ÝHÛYZÈY[È\ÚØ\Ú]ÛÝÚ[ÈÞX[Ú\È[\ÈXÚÙÜÝ[	Ë\][Û	ÍIË[ÙN	ÜÝ	Ë\ÜXÝÜ][Î	ÌMIËÛ\[[TÝ]\Î
+Ý]\ÊHOÂY
+Ý]\ËÝ\OOH	ÙÙ[\][ÉÊHÂYÙÊ	ÚÛ[ÉË	Ü[[ÉËÝ]\ËY\ÜØYÙJBBKJBYÙÊ	ÚÛ[ÉË	ÛÚÉËY[ÈÙ[\]Y	Ü\Ý[Y[×Ý\ÛXÙJ
+
+_K
+BXË[[Y]T]Y\Y\ÊÈ]Y\RÙ^NÉÝYØ×ØÜX]]\É×HJBHØ]Ú
+\HÂYÙÊ	ÚÛ[ÉË	ÙZ[	ËÛ[ÈZ[Y	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BÙ][[Ê[ÙJB]\BËÈ8¥ 8¥ Ý\Î\YHÝÈ8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YÙÊ	Ý\YKYË	Ü[[ÉË	ÐÚXÚÚ[ÈÝ\X\ÙHÝËÊBHÂÛÛÝÈ]NÝÈHH]ØZ]Ý\X\ÙBÛJ	ÝYØ×ØÜX]]\ÉÊBÙ[XÝ
+	ÚYY[×Ý\Ý]\Ë]ÜWÜXYIÊB\J	ÚY	ËÜX]]RY
+BÚ[ÛJ
+BY
+ÝÏËY[×Ý\
+HÂYÙÊ	Ý\YKYË	ÛÚÉËÝÈÛÛ\YYY[×Ý\\Ù[Ý]\ÏIÜÝËÝ]\ßX
+BH[ÙHÂYÙÊ	Ý\YKYË	ÙZ[	Ë	ÑÝÈ^\ÝÈ]Y[×Ý\\È[	ÊBÙ][[Ê[ÙJB]\BHØ]Ú
+\HÂYÙÊ	Ý\YKYË	ÙZ[	ËÚXÚÈZ[Y	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BÙ][[Ê[ÙJB]\BËÈ8¥ 8¥ Ý\
+ÜÝÈÚ]\Ö8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YÙÊ	ÝÚ]\Ë	Ü[[ÉË	ÔÜÝ[ÈÈÚ]\ÖÊBHÂÛÛÝÙY]\Ý[H]ØZ]ÜÝÕÚ]\ÜX]]RY
+BY
+ÙY]\Ý[ÝXØÙ\ÜÊHÂYÙÊ	ÝÚ]\Ë	ÛÚÉËÙY]ÜÝY	ÝÙY]\Ý[ÜÝÝ\	ÛÈT]\Y	ßX
+BH[ÙHÂYÙÊ	ÝÚ]\Ë	ÙZ[	ËÚ]\Z[Y	ÝÙY]\Ý[\ÜX
+BBHØ]Ú
+\HÂYÙÊ	ÝÚ]\Ë	ÙZ[	ËÚ]\\Ü	Ù\[Ý[Ù[Ù\ÜÈ\Y\ÜØYÙHÝ[Ê\_X
+BBËÈ8¥ 8¥ ÛH8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ YØÓÙÊ	ÕTÕTSSH8 %ÛÛ\]IÊBÙ][[Ê[ÙJBKØYÙËX×JBÛÛÝ[ÚÈHÙË[Ý	ÙË]\JOÝ]\ÈOOH	ÛÚÉÊBÛÛÝ\ÑZ[HÙËÛÛYJOÝ]\ÈOOH	ÙZ[	ÊB]\
+]Û\ÜÓ[YOHØ\YÛÝÈÜ\LÜ\Y\ÚYÜ\[[Z[K\[ÙKÌÌ]Û\ÜÓ[YOH^][\ËXÙ[\\ÝYKX]ÙY[MÜ\XÜ\[[Z[KXÜ\]Û\ÜÓ[YOH^][\ËXÙ[\Ø\L\ÝXLÚ^O^ÌMHÛ\ÜÓ[YOH^[[Z[K\[ÙHÏÜ[Û\ÜÓ[YOH^\ÛHÛXÛ^[[Z[K]^\[[H\ÝÜÜ[Ü[Û\ÜÓ[YOH^VÌLH^[[Z[KY[HÛ[[ÛÈÛ[È8¡¤Ý\X\ÙH8¡¤Ú]\ÜÜ[Ù]]ÛÛÛXÚÏ^Ü[\ÝB\ØXY^Ü[[ßBÛ\ÜÓ[YO^ØÛÞ
+	Ø\[ÙH^^ÈMKLKH^][\ËXÙ[\Ø\LKIË[[È		ÛÜXÚ]KMLÝ\ÛÜ[ÝX[ÝÙY	Ë
+_BÜ[[ÈÈØY\Ú^O^ÌLHÛ\ÜÓ[YOH[[X]K\Ü[Ï\ÝXLÚ^O^ÌLHÏBÜ[[ÈÈ	Ô[[ËÈ	Ô[\Ý	ßBØ]ÛÙ]ÛÙË[Ý	
+]Û\ÜÓ[YOHMÜXÙK^KLÛÙËX\
+
+JHO
+]Ù^O^Ú_HÛ\ÜÓ[YOH^][\Ë\Ý\Ø\L^^ÈÛ[[ÛÈÛÝ]\ÈOOH	ÛÚÉÈ	ÚXÚÐÚ\ÛHÚ^O^ÌLßHÛ\ÜÓ[YOH^[[Z[K\ÝXØÙ\ÜÈ^\Ú[ËL]LHÏBÛÝ]\ÈOOH	ÙZ[	È	Ú\ÛHÚ^O^ÌLßHÛ\ÜÓ[YOH^\YML^\Ú[ËL]LHÏBÛÝ]\ÈOOH	Ü[[ÉÈ	ØY\Ú^O^ÌLßHÛ\ÜÓ[YOH^[[Z[K\[ÙH[[X]K\Ü[^\Ú[ËL]LHÏBÛÝ]\ÈOOH	ÜÚÚ\	È	[\Ú\ÛHÚ^O^ÌLßHÛ\ÜÓ[YOH^[[Z[KYÛÛ^\Ú[ËL]LHÏB]Ü[Û\ÜÓ[YOH^[[Z[K]^Û\Ù[ZXÛÞÛÝ\WOÜÜ[ÉÈ	ßBÜ[Û\ÜÓ[YOH^[[Z[KY[HÛ\ÙßOÜÜ[Ù]Ù]
+J_BÈ\[[È	ÙË[Ý	
+]Û\ÜÓ[YO^ØÛÞ
+	Û]LÈLÈÝ[Y[È^^ÈÛXÛ^XÙ[\Ë[ÚÈ		ØË[[Z[K\ÝXØÙ\ÜËÌL^[[Z[K\ÝXØÙ\ÜÈÜ\Ü\[[Z[K\ÝXØÙ\ÜËÌÌ	Ë\ÑZ[		ØË\YMLÌL^\YMÜ\Ü\\YMLÌÌ	Ë
+_OØ[ÚÂÈ	ÕTÕTÔÑQÛ[È8¡¤Ý\X\ÙH8¡¤Ú]\Â	ÕTÕRSQ8 %ÚXÚÈÙÜÈXÝIßBÙ]
+_BÙ]
+_BÙ]
+BB¼¼RRR MÕµ½µÁ½¹¹ÑÌRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR )Õ¹Ñ¥½¸MÑÑÕÍ	¡ìÍÑÑÕÌôèìÍÑÑÕÌèÍÑÉ¥¹ô¤ì(½¹ÍÐµÀèI½ÉñÍÑÉ¥¹°ÍÑÉ¥¹øôì(±¥ÙèµÍÕÍÌ°(ÑÍÑ¥¹èµ½±°(ÉÐèµ±Õµ¥¹µµÕÑ¼ÈÀÑáÐµ±Õµ¥¹µ¥´°(ÁÕÍèµ¹È°(ô(ÉÑÕÉ¸ñÍÁ¸±ÍÍ9µõí±Íà °µÁmÍÑÑÕÍtüü¥ôùíÍÑÑÕÍôð½ÍÁ¸ø)ô()½¹ÍÐ%MQI%	UQ%=9}A1Q=I5Lôl(ì¹µèQ¥­Q½¬°¥½¸èÂ~:Ô°½±½Èè½ÉÈµÁ¥¹¬´ÔÀÀ¼ÌÀô°(ì¹µè%¹ÍÑÉ´°¥½¸èÂ~NÜ°½±½Èè½ÉÈµÁÕÉÁ±´ÔÀÀ¼ÌÀô°(ì¹µèe½ÕQÕ°¥½¸èZÓ¾â<°½±½Èè½ÉÈµÉ´ÔÀÀ¼ÌÀô°(ì¹µè1¥¹­%¸°¥½¸èÂ~Jð°½±½Èè½ÉÈµ±Õ´ÔÀÀ¼ÌÀô°(ì¹µèQÝ¥ÑÑÈ½`°¥½¸èrT°½±½Èè½ÉÈµÍ­ä´ÔÀÀ¼ÌÀô°(ì¹µè½½¬°¥½¸èÂ~N`°½±½Èè½ÉÈµ±Õ´ØÀÀ¼ÌÀô°(ì¹µèA¥¹ÑÉÍÐ°¥½¸èÂ~N0°½±½Èè½ÉÈµÉ´ÐÀÀ¼ÌÀô°(ì¹µèQ¡ÉÌ°¥½¸èÂ~Ô°½±½Èè½ÉÈµÉä´ÐÀÀ¼ÌÀô°)t()½¹ÍÐ
+IQ%Y}Q5A1QLôl(ìÑ¥Ñ±èAÉ½ÕÐQÍÑ¥µ½¹¥°P$Y½¥
+±½¹°Á±Ñ½É´èQ¥­Q½¬°Ñ½½°èÉÌô°(ìÑ¥Ñ±èAÉ½±´½M½±ÕÑ¥½¸!½½¬PMÑ½¬½½Ñ°Á±Ñ½É´è%¹ÍÑÉ´°Ñ½½°è-±¥¹ô°(ìÑ¥Ñ±è	½É½ÑÈQÉ¹Í½ÉµÑ¥½¸PUMÑå±°Á±Ñ½É´èe½ÕQÕ°Ñ½½°èÉÌô°(ìÑ¥Ñ±èDáÁ±¥¹ÈP$ÙÑÈ°Á±Ñ½É´è1¥¹­%¸°Ñ½½°è-±¥¹ô°(ìÑ¥Ñ±èQÉ¹¥¹M½Õ¹Iµ¥àPMÁ±¥ÐMÉ¸°Á±Ñ½É´èQ¥­Q½¬°Ñ½½°èÉÌô°(ìÑ¥Ñ±è
+ÕÍÑ½µÈMÑ½ÉäP
+¥¹µÑ¥µI½±°°Á±Ñ½É´è%¹ÍÑÉ´°Ñ½½°è-±¥¹ô°(ìÑ¥Ñ±èA¥¸A½¥¹Ð
+±±½ÕÐPQáÐ=ÙÉ±ä°Á±Ñ½É´èQÝ¥ÑÑÈ½`°Ñ½½°èÉÌô°(ìÑ¥Ñ±è!½ÜµQ¼QÕÑ½É¥°PMÉ¸I½É¥¹¬Y<°Á±Ñ½É´èe½ÕQÕ°Ñ½½°è-±¥¹ô°)t()½¹ÍÐQIQ}-e]=ILôl($Ù¥¼¹ÉÑ¥½¸°½¹Ñ¹ÐÕÑ½µÑ¥½¸°UÉÑ¥½¸°Ù¥É°µÉ­Ñ¥¹°(ÉÑ½ÈÑ½½±Ì°$½¹Ñ¹ÐÍÝÉ´°ÕÑ½µÑÍ½¥°µ¥°$µÉ­Ñ¥¹°)t(ËÈ8¥ 8¥ 8¥ Ù[\]HÜX]]H[Ù[8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ [Ý[ÛÙ[\]S[Ù[
+ÈÛÛÜÙKÛÙ[\]K\Ô[[Ë\[[TÝ]\ÈNÂÛÛÜÙN
+
+HOÚYÛÙ[\]N
+ÜÎÂ]NÝ[ÎÈ]ÜNÝ[ÎÈÛÛÝ[ÎÂÛ\ÎÝ[ÎÈ\][ÛÎ	ÍIÈ	ÌL	ÎÈ[ÙOÎ	ÜÝ	È	ÜÉÎÂ\ÜXÝÜ][ÏÎ	ÌMIÈ	ÎNMÈ	ÌNIÂJHOÚY\Ô[[ÎÛÛX[\[[TÝ]\Î\[[TÝ]\È[JHÂÛÛÝÜÙ[XÝYÙ]Ù[XÝYHH\ÙTÝ]J
+BÛÛÝØÝ\ÝÛU]KÙ]Ý\ÝÛU]WHH\ÙTÝ]J	ÉÊBÛÛÝØÝ\ÝÛTÛ\Ù]Ý\ÝÛTÛ\HH\ÙTÝ]J	ÉÊBÛÛÝÙ\][ÛÙ]\][ÛHH\ÙTÝ]O	ÍIÈ	ÌL	Ï	ÍIÊBÛÛÝÛ[ÙKÙ][ÙWHH\ÙTÝ]O	ÜÝ	È	ÜÉÏ	ÜÝ	ÊBÛÛÝØ\ÜXÝÙ]\ÜXÝHH\ÙTÝ]O	ÌMIÈ	ÎNMÈ	ÌNIÏ	ÌMIÊBÛÛÝ[\]HHÔPUUWÕSTUTÖÜÙ[XÝYBÛÛÝ]HHÝ\ÝÛU]K[J
+H[\]K]BÛÛÝ\ÒÛ[ÈH[\]KÛÛOOH	ÒÛ[ÉÂÛÛÝY][Û\HÜX]HHYÚ\]X[]H	Ý[\]K]Ü_HY[Î	Ý[\]K]_KÙ\ÜÚ[Û[YÚ[ËÛ[ÛÝ[Ý[Û[ØYÚ[ÈÜÛØÚX[YYXK]\
+]Û\ÜÓ[YOH^Y[Ù]LML^][\ËXÙ[\\ÝYKXÙ[\M]Û\ÜÓ[YOHXÛÛ]H[Ù]LËXXÚËÍÌXÚÙÜX\\ÛHÛÛXÚÏ^ÛÛÛÜÙ_HÏ]Û\ÜÓ[YOH[]]HËY[X^]Ë[ÈË[[Z[KXØ\Ü\Ü\[[Z[KXÜ\Ý[YLÚYÝËLÝ\ÝËZY[]Û\ÜÓ[YOH^][\ËXÙ[\\ÝYKX]ÙY[MHÜ\XÜ\[[Z[KXÜ\]]Û\ÜÓ[YOH^[[Z[K]^Û\Ù[ZXÛ^\ÛHÙ[\]H]ÈÜX]]OÙ]]Û\ÜÓ[YOH^[[Z[KY[H^^ÈÚ\ÒÛ[ÈÈ	ø¦¨HÛ[ÈRH8 %X[Y[ÈÙ[\][Û
+]JIÈ	Ð\ØYÈ[\]H8 %YÛIßBÙ]Ù]]ÛÛÛXÚÏ^ÛÛÛÜÙ_HÛ\ÜÓ[YOH^[[Z[K[]]YÝ\^[[Z[K]^LH\Ú^O^ÌMHÏØ]ÛÙ]]Û\ÜÓ[YOHMHÜXÙK^KMX^ZVÍLHÝ\ÝË^KX]]ÈËÊ\[[HÝ]\È[ÚYH[Ù[
+ßBÜ\[[TÝ]\È	\[[TÝ]\ËÝ\OOH	ÚYIÈ	
+\[[UXÚÙ\Ý]\Ï^Ü\[[TÝ]\ßHÏ
+_B]X[Û\ÜÓ[YOH^^È^[[Z[KY[HÛ[YY][HØÚÈXLÜX]]H[\]OÛX[]Û\ÜÓ[YOHÜYÜYXÛÛËLHØ\LÐÔPUUWÕSTUTËX\
+
+JHO
+]ÛÙ^O^Ú_BÛÛXÚÏ^Ê
+HOÈÙ]Ù[XÝY
+JNÈÙ]Ý\ÝÛU]J	ÉÊNÈÙ]Ý\ÝÛTÛ\
+	ÉÊH_BÛ\ÜÓ[YO^ØÛÞ
+	Ý^[Y^^ÈLÈÝ[Y[ÈÜ\[Ú][ÛX[	ËÙ[XÝYOOHBÈ	ØÜ\[[Z[K\[ÙHË[[Z[K\[ÙKÌL^[[Z[K\[ÙIÂ	ØÜ\[[Z[KXÜ\^[[Z[KY[HÝ\Ü\[[Z[K\[ÙKÍ	Ë
+_B]Û\ÜÓ[YOB&föçBÖÖVFVÒ#ç·BçFFÆWÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÕ³Ò×BÓãR÷6GÓs#à¢·BçÆFf÷&×ÒÂ·BçFööÇÐ¢·BçFööÂÓÓÒt¶Æærrbbr)ª&VÂfFVòwÐ¢ÂöFcà¢Âö'WGFöãà¢Ð¢ÂöFcà¢ÂöFcà ¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"ÓãR#à¢7W7FöÒFFÆRÇ7â6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVB#â÷FöæÂÂ÷7ãà¢ÂöÆ&VÃà¢ÆçW@¢GSÒ'FWB ¢fÇVS×¶7W7FöÕFFÆWÐ¢öä6ævS×¶RÓâ6WD7W7FöÕFFÆRRçF&vWBçfÇVRÐ¢Æ6VöÆFW#Ò&Rærât&Æ6²g&F6ÆR(	BTt2Ö6Wr ¢6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVB×ÂÓ2Ó"ãRFWB×2FWBÖÇVÖæ×FWBÆ6VöÆFW"ÖÇVÖæÖ×WFVBfö7W3¦÷WFÆæRÖæöæRfö7W3¦&÷&FW"ÖÇVÖæ×VÇ6RG&ç6FöâÖ6öÆ÷'2 ¢óà¢ÂöFcà ¢¶4¶Æærbb¢Ãà¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"ÓãR#à¢fFVò&ö×BÇ7â6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVB#â6VçBFò¶ÆærÂ÷7ãà¢ÂöÆ&VÃà¢ÇFWF&V¢fÇVS×¶7W7FöÕ&ö×GÐ¢öä6ævS×¶RÓâ6WD7W7FöÕ&ö×BRçF&vWBçfÇVRÐ¢Æ6VöÆFW#×¶FVfVÇE&ö×GÐ¢&÷w3×³7Ð¢6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVB×ÂÓ2Ó"ãRFWB×2FWBÖÇVÖæ×FWBÆ6VöÆFW"ÖÇVÖæÖ×WFVBfö7W3¦÷WFÆæRÖæöæRfö7W3¦&÷&FW"ÖÇVÖæ×VÇ6RG&ç6FöâÖ6öÆ÷'2&W6¦RÖæöæR ¢óà¢ÂöFcà¢ÆFb6Æ74æÖSÒ&w&Bw&BÖ6öÇ2Ó2vÓ2#à¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"Ó#äGW&FöãÂöÆ&VÃà¢Ç6VÆV7BfÇVS×¶GW&FöçÒöä6ævS×¶RÓâ6WDGW&FöâRçF&vWBçfÇVR2sRrÂsrÒ6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVBÖÆrÓ"ÓãRFWB×2FWBÖÇVÖæ×FWB#à¢Æ÷FöâfÇVSÒ#R#ãR6V6öæG3Âö÷Föãà¢Æ÷FöâfÇVSÒ##ã6V6öæG3Âö÷Föãà¢Â÷6VÆV7Cà¢ÂöFcà¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"Ó#åVÆGÂöÆ&VÃà¢Ç6VÆV7BfÇVS×¶ÖöFWÒöä6ævS×¶RÓâ6WDÖöFRRçF&vWBçfÇVR2w7FBrÂw&òrÒ6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVBÖÆrÓ"ÓãRFWB×2FWBÖÇVÖæ×FWB#à¢Æ÷FöâfÇVSÒ'7FB#å7FæF&CÂö÷Föãà¢Æ÷FöâfÇVSÒ'&ò#å&ò6Æ÷vW"Âö÷Föãà¢Â÷6VÆV7Cà¢ÂöFcà¢ÆFcà¢ÆÆ&VÂ6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæÖFÒföçBÖÖVFVÒ&Æö6²Ö"Ó#ä7V7CÂöÆ&VÃà¢Ç6VÆV7BfÇVS×¶7V7GÒöä6ævS×¶RÓâ6WD7V7BRçF&vWBçfÇVR2sc£rÂs£brÂs£rÒ6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷&FW"&÷&FW"ÖÇVÖæÖ&÷&FW"&÷VæFVBÖÆrÓ"ÓãRFWB×2FWBÖÇVÖæ×FWB#à¢Æ÷FöâfÇVSÒ#c£#ãc£ÆæG66SÂö÷Föãà¢Æ÷FöâfÇVSÒ#£b#ã£b÷'G&CÂö÷Föãà¢Æ÷FöâfÇVSÒ#£#ã£7V&SÂö÷Föãà¢Â÷6VÆV7Cà¢ÂöFcà¢ÂöFcà¢Âóà¢Ð ¢ÆFb6Æ74æÖSÒ&&rÖÇVÖæÖ&róc&÷VæFVBÖÆrÓ2FWB×2#à¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVBÖ"Ó#åvÆÂ7&VFS£ÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæ×FWBföçBÖÖVFVÒ#ç·FFÆWÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæÖFÒ×BÓãR#à¢·FV×ÆFRçÆFf÷&×ÒÂ·FV×ÆFRçFööÇÒÂ7FGW3¢G&g@¢¶4¶ÆærbbÂG¶GW&Föç×2ÂG¶ÖöFWÒÂG¶7V7GÖÐ¢ÂöFcà¢¶4¶Æærbb¢ÆFb6Æ74æÖSÒ&×BÓ"FWBÖÇVÖæ×VÇ6RFWBÕ³Ò#à¢)ª¶ÆærvF'&WG'ãÓ2Öâ(i"WFò×6fRFò7W&6P¢ÂöFcà¢Ð¢ÂöFcà¢ÂöFcà ¢ÆFb6Æ74æÖSÒ'ÓR&÷&FW"×B&÷&FW"ÖÇVÖæÖ&÷&FW"#à¢Æ'WGFöà¢öä6Æ6³×²ÓâöävVæW&FR°¢FFÆRÀ¢ÆFf÷&Ó¢FV×ÆFRçÆFf÷&ÒÀ¢FööÃ¢FV×ÆFRçFööÂÀ¢&ö×C¢7W7FöÕ&ö×BçG&ÒÇÂFVfVÇE&ö×BÀ¢GW&FöâÂÖöFRÂ7V7E÷&Fó¢7V7BÀ¢ÒÐ¢F6&ÆVC×¶5VæFæwÐ¢6Æ74æÖS×¶6Ç7¢v'Fâ×VÇ6RrÖgVÆÂfÆWFV×2Ö6VçFW"§W7FgÖ6VçFW"vÓ"Ó"ãRrÀ¢5VæFærbbv÷6GÓS7W'6÷"Öæ÷BÖÆÆ÷vVBrÀ¢Ð¢à¢Å¦6¦S×³7Ò6Æ74æÖS×¶5VæFæròvæÖFR×7âr¢rwÒóà¢¶5VæFæròt7&VFær7&VFfRâââr¢4¶Æærò~)ªvVæW&FRvF¶Æærr¢tvVæW&FR7&VFfRwÐ¢Âö'WGFöãà¢ÂöFcà¢ÂöFcà¢ÂöFcà¢§Ð // âââ Main component ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+export default function ContentSwarm() {
+  const { data: creatives = [], isLoading } = useUgcCreatives()
+  const { data: seoKeywords = [] } = useSeoKeywords()
+  const generateCreative = useGenerateCreative()
+  const deleteCreative = useDeleteCreative()
+  const updateStatus = useUpdateCreativeStatus()
+  const distributeCreative = useDistributeCreative()
+  const [showGenerateModal, setShowGenerateModal] = useState(false)
+  const [distributeResult, setDistributeResult] = useState<DistributeResponse | null>(null)
+  const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null)
+
+  const liveCreatives = creatives.filter((c) => c.status === 'live')
+  const videosReady = creatives.filter((c) => c.video_url).length
+  const videosGenerating = creatives.filter((c) => c.api_provider === 'kling' && !c.video_url && c.status === 'testing').length
+  const totalViews = creatives.reduce((s, c) => s + (c.views ?? 0), 0)
+  const roasItems  = creatives.filter((c) => (c.roas ?? 0) > 0)
+  const avgRoas    = roasItems.length ? roasItems.reduce((s, c) => s + c.roas, 0) / roasItems.length : 0
+  const rankedKeywords = seoKeywords.filter(k => k.position && k.position <= 10)
+  const seoScore = seoKeywords.length > 0 ? Math.round((rankedKeywords.length / Math.max(seoKeywords.length, 1)) * 100) : 0
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lumina-text font-bold text-xl">AI UGC + Content Swarm</h1>
+          <p className="text-lumina-dim text-sm">Kling AI | Auto-Distribution | 2x Retry | [UGC] Logging</p>
         </div>
-        <div className="p-3 mb-3 bg-lumina-gold/5 border border-lumina-gold/20 rounded-lg text-xs text-lumina-dim flex items-center justify-between">
-          <span>
-            Connect your social accounts via the integrations API to enable auto-posting.
-            Platform connection status is synced from your{' '}
-            <code className="text-lumina-pulse">platform_connections</code> table.
-          </span>
-          {liveCreatives.length > 0 && (
-            <button
-              onClick={() => {
-                liveCreatives.forEach((c) => {
-                  distributeCreative.mutate(c.id, {
-                    onSuccess: (res) => setDistributeResult(res),
-                  })
-                })
-              }}
-              disabled={distributeCreative.isPending}
-              className="btn-pulse text-[10px] px-3 py-1.5 flex-shrink-0 ml-3 flex items-center gap-1"
-            >
-              {distributeCreative.isPending ? <Loader2 size={10} className="animate-spin" /> : <Globe size={10} />}
-              Distribute All Live
-            </button>
-          )}
-        </div>
-
-        {/* Distribution result toast */}
-        {distributeResult && (
-          <div className="p-3 mb-3 bg-lumina-success/10 border border-lumina-success/30 rounded-lg text-xs text-lumina-text flex items-start justify-between">
-            <div>
-              <div className="font-semibold flex items-center gap-1.5 mb-1">
-                <CheckCircle size={12} className="text-lumina-success" />
-                Distributed to {distributeResult.successful}/{distributeResult.total} platforms
-              </div>
-              <div className="text-lumina-dim space-x-2">
-                {distributeResult.results.map((r) => (
-                  <span key={r.platform} className={r.success ? 'text-lumina-success' : 'text-lumina-danger'}>
-                    {r.success ? '✓' : '✗'} {r.platform}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <button onClick={() => setDistributeResult(null)} className="text-lumina-muted hover:text-lumina-text ml-2">✕</button>
-          </div>
-        )}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {DISTRIBUTION_PLATFORMS.map((p) => (
-            <div
-              key={p.name}
-              className={clsx(
-                'p-3 rounded-lg border bg-lumina-bg/40 text-center transition-all hover:border-lumina-pulse/40',
-                p.color,
-              )}
-            >
-              <div className="text-lg mb-1">{p.icon}</div>
-              <div className="text-xs text-lumina-text font-medium">{p.name}</div>
-              <div className="text-[10px] text-lumina-success mt-0.5">Enabled</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* SEO optimizer */}
-      <div className="card-glow">
-        <div className="section-header">
-          <TrendingUp size={14} />
-          SEO Optimizer — Keyword Tracking
-        </div>
-
-        {/* Score bar */}
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-sm text-lumina-dim">Current SEO Score</span>
-          <span className={clsx(
-            'text-xl font-bold font-mono',
-            seoScore >= 70 ? 'text-lumina-success' : seoScore >= 40 ? 'text-lumina-gold' : 'text-lumina-danger',
-          )}>
-            {seoScore}/100
-          </span>
-        </div>
-        <div className="w-full bg-lumina-bg rounded-full h-2 mb-4 overflow-hidden">
-          <div
-            className={clsx(
-              'h-full rounded-full transition-all duration-700',
-              seoScore >= 70 ? 'bg-lumina-success' : seoScore >= 40 ? 'bg-lumina-gold' : 'bg-lumina-danger',
-            )}
-            style={{ width: `${seoScore}%` }}
-          />
-        </div>
-
-        {/* Live keyword data if available */}
-        {seoKeywords.length > 0 ? (
-          <div className="space-y-2 mb-4">
-            <div className="text-xs text-lumina-dim font-semibold flex items-center gap-1.5">
-              <Search size={10} />
-              Tracked Keywords
-            </div>
-            <div className="space-y-1">
-              {seoKeywords.map((k) => (
-                <div key={k.id} className="flex items-center justify-between text-xs py-1.5 border-b border-lumina-border/40 last:border-0">
-                  <span className="text-lumina-text font-medium">{k.keyword}</span>
-                  <div className="flex items-center gap-4 font-mono">
-                    {k.position && (
-                      <span className={clsx(
-                        k.position <= 3 ? 'text-lumina-success' : k.position <= 10 ? 'text-lumina-gold' : 'text-lumina-dim',
-                      )}>
-                        #{k.position}
-                      </span>
-                    )}
-                    {k.volume && <span className="text-lumina-dim">{k.volume.toLocaleString()} vol</span>}
-                    {k.url && (
-                      <a href={k.url} target="_blank" rel="noreferrer" className="text-lumina-pulse hover:text-lumina-pulse/80">
-                        <ExternalLink size={10} />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          /* Fallback: show target keywords */
-          <div className="mb-4">
-            <div className="text-xs text-lumina-dim font-semibold flex items-center gap-1.5 mb-2">
-              <Search size={10} />
-              Keywords Being Targeted
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {TARGET_KEYWORDS.map((kw) => (
-                <span key={kw} className="px-2 py-1 rounded-md bg-lumina-pulse/10 border border-lumina-pulse/20 text-lumina-pulse text-xs font-mono">
-                  {kw}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <button className="btn-pulse w-full flex items-center justify-center gap-2 py-2">
-          <TrendingUp size={13} />
-          Optimize Content
+        <button className="btn-pulse flex items-center gap-2" onClick={() => setShowGenerateModal(true)}>
+          <Zap size={14} />
+          Generate Creative
         </button>
       </div>
 
-      {/* Generate Creative Modal */}
-      {showGenerateModal && (
-        <GenerateModal
-          onClose={() => setShowGenerateModal(false)}
-          isPending={generateCreative.isPending}
-          onGenerate={(opts) => {
-            generateCreative.mutate(
-              {
-                title: opts.title,
-                platform: opts.platform,
-                tool: opts.tool,
-                prompt: opts.prompt,
-                duration: opts.duration,
-                mode: opts.mode,
-                aspect_ratio: opts.aspect_ratio,
-              },
-              { onSuccess: () => setShowGenerateModal(false) },
-            )
-          }}
-        />
-      )}
-    </div>
-  )
-}
+      {/* Pipeline Status Tracker â shows when active */}
+      <PipelineTracker status={pipelineStatus} />
 
+      {/* Test Pipeline */}
+      <TestPipelinePanel />
+
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="card-glow text-center">
+          <div className="stat-label">Total Views</div>
+          <div className="stat-value text-lumina-pulse">
+            {totalViews > 0 ? `${(totalViews / 1000).toFixed(0)}k` : 'â'}
+          </div>
+        </div>
+        <div className="card-glow text-center">
+          <div className="stat-label">Avg ROAS</div>
+          <div className="stat-value text-lumina-gold">
+            {avgRoas > 0 ? `${avgRoas.toFixed(1)}x` : 'â'}
+          </div>
+        </div>
+        <div className="card-glow text-center">
+          <div className="stat-label">Live Creatives</div>
+          <div className="stat-value text-lumina-success">{liveCreatives.length}</div>
+        </div>
+        <div className="card-glow text-center">
+          <div className="stat-label">AI Videos</div>
+          <div className="stat-value text-lumina-pulse">
+            {videosReady}
+            {videosGenerating > 0 && (
+              <span className="text-xs text-lumina-dim ml-1">+{videosGenerating} gen</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Creatives list */}
+      <div className="card-glow">
+        <div className="section-header">
+          <Video size={14} />
+          Active Creatives
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-8 text-lumina-dim text-sm">Loading...</div>
+        ) : creatives.length === 0 ? (
+          <div className="text-center py-10 space-y-3">
+            <Play size={28} className="text-lumina-border mx-auto" />
+            <p className="text-lumina-dim text-sm">
+              No creatives yet. Click <span className="text-lumina-pulse">Generate Creative</span> to start,
+              or run the <span className="text-lumina-pulse">Pipeline Test</span> above.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {creatives.map((c) => (
+              <div key={c.id} className="p-3 bg-lumina-bg/60 rounded-xl flex flex-wrap items-center gap-3 group">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  {c.video_url ? (
+                    <a href={c.video_url} target="_blank" rel="noreferrer" className="w-14 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden relative hover:ring-2 ring-lumina-pulse transition-all" title="Open video">
+                      <Film size={14} className="text-lumina-success" />
+                      <div className="absolute bottom-0 right-0 bg-lumina-success/90 text-[8px] text-white px-1 rounded-tl">READY</div>
+                    </a>
+                  ) : c.api_provider === 'kling' && c.status === 'testing' ? (
+                    <div className="w-14 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0 animate-pulse">
+                      <Loader2 size={14} className="text-lumina-pulse animate-spin" />
+                    </div>
+                  ) : (
+                    <div className="w-14 h-10 bg-lumina-border rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Play size={14} className="text-lumina-dim" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-sm text-lumina-text font-medium truncate">{c.title}</div>
+                    <div className="text-xs text-lumina-dim">
+                      {c.platform} | {c.tool}
+                      {c.api_provider === 'kling' && c.video_url && <span className="text-lumina-success ml-1">| Video ready</span>}
+                      {c.api_provider === 'kling' && !c.video_url && c.status === 'testing' && <span className="text-lumina-pulse ml-1">| Generating...</span>}
+                      {c.distributed_to && c.distributed_to.length > 0 && <span className="text-lumina-gold ml-1">| Distributed: {c.distributed_to.join(', ')}</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text×2föçBÖÖöæò#à¢²2çfWw2óòâbb¢Ãà¢Ç7â6Æ74æÖSÒ'FWBÖÇVÖæÖFÒ#ç²2çfWw2òçFôfVBÖ²fWw3Â÷7ãà¢Ç7â6Æ74æÖSÒ'FWBÖÇVÖæ×FWB#ç¶2æ7G'ÒR5E#Â÷7ãà¢Ç7â6Æ74æÖS×¶6Ç7vföçB×6VÖ&öÆBrÂ2ç&ö2ãÒ"òwFWBÖÇVÖæ×7V66W72r¢wFWBÖÇVÖæ×v&æærrÓç¶2ç&ö7×$ô3Â÷7ãà¢Âóà¢Ð¢¶2çfFVõ÷W&Âbb¢Æ&Vc×¶2çfFVõ÷W&ÇÒF&vWCÒ%ö&Ææ²"&VÃÒ&æ÷&VfW'&W""6Æ74æÖSÒ'FWBÖÇVÖæ×VÇ6R÷fW#§FWBÖÇVÖæ×VÇ6Ró"FFÆSÒ$÷VâfFVò#à¢ÄWFW&æÄÆæ²6¦S×³'Òóà¢Âöà¢Ð¢Æ'WGFöà¢öä6Æ6³×²Óâ°¢6öç7BæWC¢&V6÷&CÇ7G&ærÂVv47&VFfU²w7FGW2uÓâÒ²G&gC¢wFW7FærrÂFW7Fæs¢vÆfRrÂÆfS¢wW6VBrÂW6VC¢vG&gBrÐ¢föBWFFU7FGW2æ×WFFR²C¢2æBÂ7FGW3¢æWE¶2ç7FGW5ÒóòvG&gBrÒ¢×Ð¢FFÆS×¶6Æ6²FòGfæ6R7FGW2G¶2ç7FGW7ÒÐ¢F6&ÆVC×·WFFU7FGW2æ5VæFæwÐ¢à¢Å7FGW4&FvR7FGW3×¶2ç7FGW7Òóà¢Âö'WGFöãà¢¶2ç7FGW2ÓÓÒvÆfRrbb¢Æ'WGFöà¢öä6Æ6³×²ÓâF7G&'WFT7&VFfRæ×WFFR2æBÂ²öå7V66W73¢&W2Óâ6WDF7G&'WFU&W7VÇB&W2ÒÐ¢F6&ÆVC×¶F7G&'WFT7&VFfRæ5VæFæwÐ¢6Æ74æÖSÒ'FWBÖÇVÖæ×VÇ6R÷fW#§FWBÖÇVÖæ×VÇ6RófÆWFV×2Ö6VçFW"vÓFWBÕ³ÒföçB×6VÖ&öÆB ¢FFÆSÒ$F7G&'WFRFòÆÂÆFf÷&×2 ¢à¢¶F7G&'WFT7&VFfRæ5VæFæròÄÆöFW#"6¦S×³Ò6Æ74æÖSÒ&æÖFR×7â"óâ¢ÄvÆö&R6¦S×³ÒóçÐ¢F7G&'WFP¢Âö'WGFöãà¢Ð¢Æ'WGFöà¢öä6Æ6³×²Óâ²bvæF÷ræ6öæf&ÒFVÆWFR"G¶2çFFÆWÒ#öföBFVÆWFT7&VFfRæ×WFFR2æB×Ð¢6Æ74æÖSÒ&÷6GÓw&÷WÖ÷fW#¦÷6GÓG&ç6FöâÖ÷6GFWBÖÇVÖæÖ×WFVB÷fW#§FWBÖÇVÖæÖFævW" ¢FFÆSÒ$FVÆWFR7&VFfR ¢à¢ÅG&6"6¦S×³'Òóà¢Âö'WGFöãà¢ÂöFcà¢ÂöFcà¢Ð¢ÂöFcà¢Ð¢ÂöFcà ¢²ò¢F7G&'WFöâ6ææVÇ2¢÷Ð¢ÆFb6Æ74æÖSÒ&6&BÖvÆ÷r#à¢ÆFb6Æ74æÖSÒ'6V7FöâÖVFW"#à¢ÄvÆö&R6¦S×³GÒóà¢WFòÔF7G&'WFöâ6ææVÇ0¢ÂöFcà¢¶F7G&'WFU&W7VÇBbb¢ÆFb6Æ74æÖSÒ'Ó2Ö"Ó2&rÖÇVÖæ×7V66W72ó&÷&FW"&÷&FW"ÖÇVÖæ×7V66W72ó3&÷VæFVBÖÆrFWB×2FWBÖÇVÖæ×FWBfÆWFV×2×7F'B§W7FgÖ&WGvVVâ#à¢ÆFcà¢ÆFb6Æ74æÖSÒ&föçB×6VÖ&öÆBfÆWFV×2Ö6VçFW"vÓãRÖ"Ó#à¢Ä6V6´6&6ÆR6¦S×³'Ò6Æ74æÖSÒ'FWBÖÇVÖæ×7V66W72"óà¢F7G&'WFVBFò¶F7G&'WFU&W7VÇBç7V66W76gVÇÒ÷¶F7G&'WFU&W7VÇBçF÷FÇÒÆFf÷&×0¢ÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÖÇVÖæÖFÒ76R×Ó"#à¢¶F7G&'WFU&W7VÇBç&W7VÇG2æÖ"Óâ¢Ç7â¶W×·"çÆFf÷&×Ò6Æ74æÖS×·"ç7V66W72òwFWBÖÇVÖæ×7V66W72r¢wFWBÖÇVÖæÖFævW"wÓà¢·"ç7V66W72ò~)É2r¢~)ÉrwÒ·"çÆFf÷&×Ð¢Â÷7ãà¢Ð¢ÂöFcà¢ÂöFcà¢Æ'WGFöâöä6Æ6³×²Óâ6WDF7G&'WFU&W7VÇBçVÆÂÒ6Æ74æÖSÒ'FWBÖÇVÖæÖ×WFVB÷fW#§FWBÖÇVÖæ×FWBÖÂÓ"#î)ÉSÂö'WGFöãà¢ÂöFcà¢Ð¢ÆFb6Æ74æÖSÒ&w&Bw&BÖ6öÇ2Ó"ÖC¦w&BÖ6öÇ2ÓBvÓ"#à¢´D5E$%UDôåõÄDdõ$Õ2æÖÓâ¢ÆFb¶W×·ææÖWÒ6Æ74æÖS×¶6Ç7wÓ2&÷VæFVBÖÆr&÷&FW"&rÖÇVÖæÖ&róCFWBÖ6VçFW"G&ç6FöâÖÆÂ÷fW#¦&÷&FW"ÖÇVÖæ×VÇ6RóCrÂæ6öÆ÷"Óà¢ÆFb6Æ74æÖSÒ'FWBÖÆrÖ"Ó#ç·æ6öçÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWB×2FWBÖÇVÖæ×FWBföçBÖÖVFVÒ#ç·ææÖWÓÂöFcà¢ÆFb6Æ74æÖSÒ'FWBÕ³ÒFWBÖÇVÖæ×7V66W72×BÓãR#äVæ&ÆVCÂöFcà¢ÂöFcà¢Ð¢ÂöFcà¢ÂöFcà ¢²ò¢4Tò÷FÖ¦W"¢÷Ð¢ÆFb6Æ74æÖSÒ&6&BÖvÆ÷r#à¢ÆFb6Æ74æÖSÒ'6V7FöâÖVFW"#à¢ÅG&VæFæuW6¦S×³GÒóà¢4Tò÷FÖ¦W"(	B¶Wv÷&BG&6¶æp¢ÂöFcà¢ÆFb6Æ74æÖSÒ&fÆWFV×2Ö6VçFW"§W7FgÖ&WGvVVâÖ"ÓB#à¢Ç7â6Æ74æÖSÒ'FWB×6ÒFWBÖÇVÖæÖFÒ#ä7W'&VçB4Tò66÷&SÂ÷7ãà¢Ç7â6Æ74æÖS×¶6Ç7wFWB×ÂföçBÖ&öÆBföçBÖÖöæòrÂ6Võ66÷&RãÒsòwFWBÖÇVÖæ×7V66W72r¢6Võ66÷&RãÒCòwFWBÖÇVÖæÖvöÆBr¢wFWBÖÇVÖæÖFævW"rÓç·6Võ66÷&WÒóÂ÷7ãà¢ÂöFcà¢ÆFb6Æ74æÖSÒ'rÖgVÆÂ&rÖÇVÖæÖ&r&÷VæFVBÖgVÆÂÓ"Ö"ÓB÷fW&fÆ÷rÖFFVâ#à¢ÆFb6Æ74æÖS×¶6Ç7vÖgVÆÂ&÷VæFVBÖgVÆÂG&ç6FöâÖÆÂGW&FöâÓsrÂ6Võ66÷&RãÒsòv&rÖÇVÖæ×7V66W72r¢6Võ66÷&RãÒCòv&rÖÇVÖæÖvöÆBr¢v&rÖÇVÖæÖFævW"rÒ7GÆS×·²vGF¢G·6Võ66÷&WÒV×Òóà¢ÂöFcà¢·6Vô¶Wv÷&G2æÆVæwFâò¢ÆFb6Æ74æÖSÒ'76R×Ó"Ö"ÓB#à¢ÆFb6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçB×6VÖ&öÆBfÆWFV×2Ö6VçFW"vÓãR#ãÅ6V&66¦S×³ÒóåG&6¶VB¶Wv÷&G3ÂöFcà¢ÆFb6Æ74æÖSÒ'76R×Ó#à¢·6Vô¶Wv÷&G2æÖ²Óâ¢ÆFb¶W×¶²æGÒ6Æ74æÖSÒ&fÆWFV×2Ö6VçFW"§W7FgÖ&WGvVVâFWB×2ÓãR&÷&FW"Ö"&÷&FW"ÖÇVÖæÖ&÷&FW"óCÆ7C¦&÷&FW"Ó#à¢Ç7â6Æ74æÖSÒ'FWBÖÇVÖæ×FWBföçBÖÖVFVÒ#ç¶²æ¶Wv÷&GÓÂ÷7ãà¢ÆFb6Æ74æÖSÒ&fÆWFV×2Ö6VçFW"vÓBföçBÖÖöæò#à¢¶²ç÷6FöâbbÇ7â6Æ74æÖS×¶6Ç7²ç÷6FöâÃÒ2òwFWBÖÇVÖæ×7V66W72r¢²ç÷6FöâÃÒòwFWBÖÇVÖæÖvöÆBr¢wFWBÖÇVÖæÖFÒrÓâ7¶²ç÷6FöçÓÂ÷7ãçÐ¢¶²çföÇVÖRbbÇ7â6Æ74æÖSÒ'FWBÖÇVÖæÖFÒ#ç¶²çföÇVÖRçFôÆö6ÆU7G&ærÒföÃÂ÷7ãçÐ¢¶²çW&ÂbbÆ&Vc×¶²çW&ÇÒF&vWCÒ%ö&Ææ²"&VÃÒ&æ÷&VfW'&W""6Æ74æÖSÒ'FWBÖÇVÖæ×VÇ6R÷fW#§FWBÖÇVÖæ×VÇ6Ró#ãÄWFW&æÄÆæ²6¦S×³ÒóãÂöçÐ¢ÂöFcà¢ÂöFcà¢Ð¢ÂöFcà¢ÂöFcà¢¢¢ÆFb6Æ74æÖSÒ&Ö"ÓB#à¢ÆFb6Æ74æÖSÒ'FWB×2FWBÖÇVÖæÖFÒföçB×6VÖ&öÆBfÆWFV×2Ö6VçFW"vÓãRÖ"Ó"#ãÅ6V&66¦S×³Òóä¶Wv÷&G2&VærF&vWFVCÂöFcà¢ÆFb6Æ74æÖSÒ&fÆWfÆW×w&vÓ"#à¢µD$tUEô´Utõ$E2æÖ·rÓâ¢Ç7â¶W×¶·wÒ6Æ74æÖSÒ'Ó"Ó&÷VæFVBÖÖB&rÖÇVÖæ×VÇ6Ró&÷&FW"&÷&FW"ÖÇVÖæ×VÇ6Ró#FWBÖÇVÖæ×VÇ6RFWB×2föçBÖÖöæò#ç¶·wÓÂ÷7ãà¢Ð¢ÂöFcà¢ÂöFcà¢Ð¢ÂöFcà ¢²ò¢vVæW&FR7&VFfRÖöFÂ¢÷Ð¢·6÷tvVæW&FTÖöFÂbb¢ÄvVæW&FTÖöFÀ¢öä6Æ÷6S×²Óâ6WE6÷tvVæW&FTÖöFÂfÇ6RÐ¢5VæFæs×¶vVæW&FT7&VFfRæ5VæFæwÐ¢VÆæU7FGW3×·VÆæU7FGW7Ð¢öävVæW&FS×²÷G2Óâ°¢vVæW&FT7&VFfRæ×WFFR¢°¢FFÆS¢÷G2çFFÆRÀ¢ÆFf÷&Ó¢÷G2çÆFf÷&ÒÀ¢FööÃ¢÷G2çFööÂÀ¢&ö×C¢÷G2ç&ö×BÀ¢GW&Föã¢÷G2æGW&FöâÀ¢ÖöFS¢÷G2æÖöFRÀ¢7V7E÷&Fó¢÷G2æ7V7E÷&FòÀ¢öåVÆæU7FGW3¢6WEVÆæU7FGW2À¢ÒÀ¢²öå7V66W73¢Óâ6WE6÷tvVæW&FTÖöFÂfÇ6RÒÀ¢¢×Ð¢óà¢Ð¢ÂöFcà¢§Ð
