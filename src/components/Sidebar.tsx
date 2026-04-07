@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useNotificationPermission } from '../hooks/useNotifications'
+import { useMT5Account } from '../hooks/useMT5'
+import { useJobs } from '../hooks/useJobs'
 
 interface SidebarProps {
   activeTab: string
@@ -15,6 +17,49 @@ interface SidebarProps {
   isDark?: boolean
   onThemeToggle?: () => void
 }
+
+function LuminaAlphaPanel({ collapsed }: { collapsed: boolean }) {
+  const { data: account } = useMT5Account()
+  const { data: jobs = [] } = useJobs()
+
+  const isConnected = !!account
+  const openTrades = account?.openTrades?.length ?? 0
+  const dailyPnl = account?.dayPnl ?? 0
+  const activeJobs = jobs.filter(j => j.status === 'active' || j.status === 'scaling').length
+
+  return (
+    <div className="border-t border-lumina-border px-2 py-3">
+      {collapsed ? (
+        <div className="flex justify-center">
+          <div className={clsx(
+            'w-2.5 h-2.5 rounded-full',
+            isConnected ? 'bg-lumina-success animate-pulse' : 'bg-lumina-dim'
+          )} />
+        </div>
+      ) : (
+        <div className="space-y-2 text-xs">
+          <div className="flex items-center gap-2">
+            <div className={clsx(
+              'w-2 h-2 rounded-full flex-shrink-0',
+              isConnected ? 'bg-lumina-success animate-pulse' : 'bg-lumina-dim'
+            )} />
+            <span className="text-lumina-text font-semibold">Lumina Alpha</span>
+          </div>
+          {isConnected && (
+            <>
+              <div className="text-lumina-dim">Monitoring {openTrades} EA{openTrades !== 1 ? 's' : ''}</div>
+              <div className={dailyPnl >= 0 ? 'text-lumina-success' : 'text-lumina-warning'}>
+                {dailyPnl >= 0 ? '+' : ''}${Math.abs(dailyPnl).toFixed(0)} today
+              </div>
+              <div className="text-lumina-dim">{activeJobs} jobs active</div>
+              <div className="text-lumina-pulse font-semibold">Auto-pilot: ON</div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+  }
 
 const NAV_ITEMS = [
   { id: 'dashboard',      label: 'Ops Hub',            icon: LayoutDashboard },
@@ -85,6 +130,9 @@ export default function Sidebar({ activeTab, onTabChange, collapsed, onToggle, i
         ))}
       </nav>
 
+      {/* Lumina Alpha Status Panel */}
+      <LuminaAlphaPanel collapsed={collapsed} />
+
       {/* Bottom controls */}
       <div className="px-2 py-3 border-t border-lumina-border space-y-1">
         {/* Notification enable button */}
@@ -143,4 +191,3 @@ export default function Sidebar({ activeTab, onTabChange, collapsed, onToggle, i
     </aside>
   )
 }
-
