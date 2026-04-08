@@ -313,7 +313,7 @@ function TestPipelinePanel() {
 
     // ── Step 1: Insert test creative ────────────────────────────────
     addLog('insert', 'running', 'Inserting test creative row...')
-    let creativeId: string | null = null
+    let creativeId = "" as string
     try {
       const { data, error } = await supabase
         .from('ugc_creatives')
