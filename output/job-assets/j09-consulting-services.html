@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Consulting & Agent-as-a-Service | Lumina Ops Hub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+
+        /* Header Navigation */
+        header {
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(6, 182, 212, 0.2);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #06b6d4;
+            letter-spacing: -0.5px;
+        }
+
+        nav a {
+            color: #cbd5e1;
+            text-decoration: none;
+            margin-left: 2rem;
+            font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+
+        nav a:hover {
+            color: #06b6d4;
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(15, 23, 42, 0) 100%);
+            border-bottom: 1px solid rgba(6, 182, 212, 0.2);
+            padding: 6rem 2rem;
+            text-align: center;
+        }
+
+        .hero-content {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 1.5rem;
+            color: #cbd5e1;
+            margin-bottom: 2rem;
+            font-weight: 300;
+        }
+
+        .cta-primary {
+            display: inline-block;
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+            color: #0f172a;
+            padding: 1rem 2.5rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            font-size: 1.1rem;
+        }
+
+        .cta-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(6, 182, 212, 0.3);
+        }
+
+        /* Service Tiers Section */
+        .service-tiers {
+            max-width: 1200px;
+            margin: 5rem auto;
+            padding: 0 2rem;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 3rem;
+            color: #06b6d4;
+        }
+
+        .tiers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2rem;
+            margin-bottom: 4rem;
+        }
+
+        .tier-card {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.8) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 0.75rem;
+            padding: 2rem;
+            transition: all 0.3s;
+        }
+
+        .tier-card:hover {
+            border-color: rgba(6, 182, 212, 0.5);
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.15);
+            transform: translateY(-5px);
+        }
+
+        .tier-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #06b6d4;
+            margin-bottom: 0.5rem;
+        }
+
+        .tier-price {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #06b6d4;
+            margin-bottom: 1rem;
+        }
+
+        .tier-price span {
+            font-size: 1rem;
+            color: #94a3b8;
+        }
+
+        .tier-description {
+            color: #cbd5e1;
+            margin-bottom: 1.5rem;
+            line-height: 1.8;
+        }
+
+        .tier-features {
+            list-style: none;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(6, 182, 212, 0.1);
+        }
+
+        .tier-features li {
+            color: #cbd5e1;
+            margin-bottom: 0.75rem;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .tier-features li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #06b6d4;
+            font-weight: bold;
+        }
+
+        /* Agent Fleet Cards */
+        .agent-fleet {
+            max-width: 1200px;
+            margin: 5rem auto;
+            padding: 0 2rem;
+        }
+
+        .agents-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .agent-card {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.8) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .agent-card:hover {
+            border-color: rgba(6, 182, 212, 0.5);
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.15);
+            transform: translateY(-3px);
+        }
+
+        .agent-name {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #06b6d4;
+            margin-bottom: 0.5rem;
+        }
+
+        .agent-role {
+            font-size: 1rem;
+            color: #cbd5e1;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .agent-output {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            line-height: 1.6;
+        }
+
+        /* Free Bonus Section */
+        .free-bonus {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(15, 23, 42, 0) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 0.75rem;
+            max-width: 1200px;
+            margin: 5rem auto;
+            padding: 3rem 2rem;
+        }
+
+        .bonus-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #06b6d4;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .bonus-subtitle {
+            font-size: 1.1rem;
+            color: #cbd5e1;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .courses-list {
+            max-width: 900px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .course-item {
+            background: rgba(15, 23, 42, 0.5);
+            border-left: 3px solid #06b6d4;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+        }
+
+        .course-name {
+            font-weight: 700;
+            color: #06b6d4;
+            margin-bottom: 0.5rem;
+        }
+
+        .course-provider {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-bottom: 0.75rem;
+        }
+
+        .course-link {
+            display: inline-block;
+            color: #06b6d4;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.3s;
+        }
+
+        .course-link:hover {
+            color: #0891b2;
+            text-decoration: underline;
+        }
+
+        /* Case Study */
+        .case-study {
+            max-width: 1200px;
+            margin: 5rem auto;
+            padding: 0 2rem;
+        }
+
+        .case-study-content {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.8) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 0.75rem;
+            padding: 3rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .case-study-text h3 {
+            font-size: 1.8rem;
+            color: #06b6d4;
+            margin-bottom: 1rem;
+        }
+
+        .case-study-text p {
+            color: #cbd5e1;
+            margin-bottom: 1rem;
+            line-height: 1.8;
+        }
+
+        .case-study-metrics {
+            display: flex;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .metric {
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #06b6d4;
+            line-height: 1;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-top: 0.5rem;
+        }
+
+        .case-study-image {
+            background: rgba(6, 182, 212, 0.05);
+            border: 2px dashed rgba(6, 182, 212, 0.2);
+            border-radius: 0.75rem;
+            padding: 3rem;
+            text-align: center;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .case-study-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ROI Calculator */
+        .roi-calculator {
+            max-width: 1200px;
+            margin: 5rem auto;
+            padding: 0 2rem;
+        }
+
+        .calculator-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.8) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            margin-top: 2rem;
+        }
+
+        .calculator-table thead {
+            background: rgba(6, 182, 212, 0.1);
+            border-bottom: 2px solid rgba(6, 182, 212, 0.3);
+        }
+
+        .calculator-table th {
+            padding: 1.5rem;
+            text-align: left;
+            font-weight: 700;
+            color: #06b6d4;
+        }
+
+        .calculator-table td {
+            padding: 1.5rem;
+            color: #cbd5e1;
+            border-bottom: 1px solid rgba(6, 182, 212, 0.1);
+        }
+
+        .calculator-table tbody tr:hover {
+            background: rgba(6, 182, 212, 0.05);
+        }
+
+        .value-highlight {
+            color: #06b6d4;
+            font-weight: 700;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            max-width: 900px;
+            margin: 5rem auto;
+            padding: 3rem 2rem;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(15, 23, 42, 0) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 0.75rem;
+        }
+
+        .cta-section h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #06b6d4;
+            margin-bottom: 1rem;
+        }
+
+        .cta-section p {
+            font-size: 1.2rem;
+            color: #cbd5e1;
+            margin-bottom: 2rem;
+        }
+
+        .cta-email {
+            display: inline-block;
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+            color: #0f172a;
+            padding: 1rem 2.5rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            font-size: 1.1rem;
+        }
+
+        .cta-email:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(6, 182, 212, 0.3);
+        }
+
+        /* Footer */
+        footer {
+            background: rgba(15, 23, 42, 0.95);
+            border-top: 1px solid rgba(6, 182, 212, 0.2);
+            padding: 2rem;
+            text-align: center;
+            color: #94a3b8;
+            margin-top: 5rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .section-title {
+                font-size: 2rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            nav {
+                display: none;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .hero p {
+                font-size: 1.1rem;
+            }
+
+            .tiers-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .agents-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .agents-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .case-study-metrics {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .cta-section h2 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">Lumina Ops</div>
+            <nav>
+                <a href="#services">Services</a>
+                <a href="#agents">Agents</a>
+                <a href="#case-study">Results</a>
+                <a href="#contact">Contact</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>AI Consulting & Agent-as-a-Service</h1>
+            <p>Transform your business with enterprise-grade AI that works 24/7</p>
+            <a href="mailto:consulting@luminaops.com?subject=Free%20AI%20Assessment" class="cta-primary">Book a Free AI Assessment</a>
+        </div>
+    </section>
+
+    <!-- Service Tiers -->
+    <section class="service-tiers" id="services">
+        <h2 class="section-title">Our Service Offerings</h2>
+        <div class="tiers-grid">
+            <!-- Tier 1: AI Audit -->
+            <div class="tier-card">
+                <div class="tier-title">AI Audit</div>
+                <div class="tier-price">$2,000 <span>one-time</span></div>
+                <p class="tier-description">Comprehensive assessment of your current workflows and AI opportunities</p>
+                <ul class="tier-features">
+                    <li>Complete workflow audit</li>
+                    <li>AI opportunity identification</li>
+                    <li>Implementation roadmap</li>
+                    <li>Priority recommendations</li>
+                    <li>Quick-win opportunities</li>
+                </ul>
+            </div>
+
+            <!-- Tier 2: Monthly Retainer -->
+            <div class="tier-card">
+                <div class="tier-title">Monthly Retainer</div>
+                <div class="tier-price">$6,000 <span>/month</span></div>
+                <p class="tier-description">Ongoing AI strategy and implementation support</p>
+                <ul class="tier-features">
+                    <li>Dedicated AI strategist</li>
+                    <li>Monthly strategy sessions</li>
+                    <li>Implementation support</li>
+                    <li>Performance reports</li>
+                    <li>Team training & enablement</li>
+                </ul>
+            </div>
+
+            <!-- Tier 3: Agent Fleet -->
+            <div class="tier-card">
+                <div class="tier-title">Agent Fleet Package</div>
+                <div class="tier-price">$8,000 <span>/month</span></div>
+                <p class="tier-description">6 parallel Claude agents deployed for your business</p>
+                <ul class="tier-features">
+                    <li>6 specialized agents deployed</li>
+                    <li>Custom workflow integration</li>
+                    <li>24/7 AI operations</li>
+                    <li>Performance analytics</li>
+                    <li>Priority support & optimization</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Agent Fleet -->
+    <section class="agent-fleet" id="agents">
+        <h2 class="section-title">Meet Your AI Agents</h2>
+        <p style="text-align: center; color: #cbd5e1; margin-bottom: 2rem; font-size: 1.1rem;">Six specialized agents, each mastering their domain</p>
+
+        <div class="agents-grid">
+            <div class="agent-card">
+                <div class="agent-name">Alpha</div>
+                <div class="agent-role">Research Agent</div>
+                <div class="agent-output">Gathers intelligence, analyzes trends, synthesizes insights from 100+ sources</div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-name">Bravo</div>
+                <div class="agent-role">Content Agent</div>
+                <div class="agent-output">Generates blog posts, case studies, whitepapers, email campaigns at scale</div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-name">Charlie</div>
+                <div class="agent-role">Analysis Agent</div>
+                <div class="agent-output">Processes data, creates visualizations, identifies patterns in large datasets</div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-name">Delta</div>
+                <div class="agent-role">Lead Qualification Agent</div>
+                <div class="agent-output">Scores leads, qualifies prospects, personalizes outreach at 10x speed</div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-name">Echo</div>
+                <div class="agent-role">Code Generation Agent</div>
+                <div class="agent-output">Writes clean code, debugs issues, automates technical documentation</div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-name">Zeta</div>
+                <div class="agent-role">Data Processing Agent</div>
+                <div class="agent-output">ETL workflows, database optimization, real-time data transformation</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Free Bonus Section -->
+    <section class="free-bonus">
+        <h2 class="bonus-title">Free AI Upskill Bonus</h2>
+        <p class="bonus-subtitle">Every client gets access to our curated 20-course AI learning path</p>
+        <p style="text-align: center; color: #94a3b8; margin-bottom: 2rem;">Top 5 recommended courses to get started:</p>
+
+        <div class="courses-list">
+            <div class="course-item">
+                <div class="course-name">Introduction to Large Language Models</div>
+                <div class="course-provider">Anthropic</div>
+                <a href="https://www.anthropic.com/news" class="course-link">Learn more →</a>
+            </div>
+
+            <div class="course-item">
+                <div class="course-name">Fundamentals of Deep Learning</div>
+                <div class="course-provider">NVIDIA</div>
+                <a href="https://www.nvidia.com/en-us/training/" class="course-link">Learn more →</a>
+            </div>
+
+            <div class="course-item">
+                <div class="course-name">ChatGPT Prompt Engineering for Developers</div>
+                <div class="course-provider">OpenAI & DeepLearning.AI</div>
+                <a href="https://www.deeplearning.ai/" class="course-link">Learn more →</a>
+            </div>
+
+            <div class="course-item">
+                <div class="course-name">Generative AI with Google Cloud</div>
+                <div class="course-provider">Google Cloud</div>
+                <a href="https://cloud.google.com/training" class="course-link">Learn more →</a>
+            </div>
+
+            <div class="course-item">
+                <div class="course-name">Machine Learning for Everyone</div>
+                <div class="course-provider">DeepLearning.AI</div>
+                <a href="https://www.deeplearning.ai/" class="course-link">Learn more →</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Case Study -->
+    <section class="case-study" id="case-study">
+        <h2 class="section-title">Real Results</h2>
+        <div class="case-study-content">
+            <div class="case-study-text">
+                <h3>Meridian Capital Group</h3>
+                <p>Meridian Capital, a mid-sized investment firm, engaged us to deploy an AI consulting solution. Within 90 days, their team was leveraging three of our agents to automate due diligence, market research, and portfolio analysis.</p>
+                <p>The results were measurable and immediate:</p>
+                <div class="case-study-metrics">
+                    <div class="metric">
+                        <div class="metric-value">47h</div>
+                        <div class="metric-label">Hours saved per week</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">$35K</div>
+                        <div class="metric-label">New revenue identified</div>
+                    </div>
+                </div>
+            </div>
+            <div class="case-study-image">
+                📊 Case Study Visualization<br>
+                <span style="font-size: 0.8rem; margin-top: 1rem; display: block;">Investment portfolio analysis dashboard powered by AI agents</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ROI Calculator -->
+    <section class="roi-calculator">
+        <h2 class="section-title">Calculate Your ROI</h2>
+        <p style="text-align: center; color: #cbd5e1; margin-bottom: 2rem;">If your team spends X hours on manual tasks, AI saves Y hours = $Z value per month</p>
+
+        <table class="calculator-table">
+            <thead>
+                <tr>
+                    <th>Hours on Manual Tasks (Weekly)</th>
+                    <th>Hours AI Can Automate</th>
+                    <th>Annual Hours Saved</th>
+                    <th>Monthly Value at $75/hr</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>10 hours</td>
+                    <td>7 hours</td>
+                    <td>364 hours</td>
+                    <td class="value-highlight">$2,275</td>
+                </tr>
+                <tr>
+                    <td>20 hours</td>
+                    <td>15 hours</td>
+                    <td>780 hours</td>
+                    <td class="value-highlight">$4,875</td>
+                </tr>
+                <tr>
+                    <td>30 hours</td>
+                    <td>22 hours</td>
+                    <td>1,144 hours</td>
+                    <td class="value-highlight">$7,150</td>
+                </tr>
+                <tr>
+                    <td>40 hours</td>
+                    <td>30 hours</td>
+                    <td>1,560 hours</td>
+                    <td class="value-highlight">$9,750</td>
+                </tr>
+                <tr>
+                    <td>50 hours</td>
+                    <td>38 hours</td>
+                    <td>1,976 hours</td>
+                    <td class="value-highlight">$12,350</td>
+                </tr>
+            </tbody>
+        </table>
+        <p style="text-align: center; color: #94a3b8; margin-top: 2rem; font-size: 0.95rem;">Most clients recoup their investment in 2-4 months. Our Agent Fleet Package pays for itself in productivity gains alone.</p>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section" id="contact">
+        <h2>Ready to Transform Your Business?</h2>
+        <p>Start with a free AI assessment. No obligation. 30-minute consultation.</p>
+        <a href="mailto:consulting@luminaops.com?subject=Free%20AI%20Assessment%20Request&body=Hi%20Lumina%20Ops%20Team,%0A%0AI%27m%20interested%20in%20scheduling%20a%20free%20AI%20assessment%20for%20my%20business.%0A%0ACompany:%0ATeam%20size:%0AKey%20challenges:%0A%0AThanks!" class="cta-email">Book a Free AI Assessment</a>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 Lumina Ops Hub. All rights reserved. | AI Consulting & Agent-as-a-Service</p>
+        <p style="margin-top: 1rem; font-size: 0.9rem;">Powered by Claude AI & Modern Web Technologies</p>
+    </footer>
+</body>
+</html>

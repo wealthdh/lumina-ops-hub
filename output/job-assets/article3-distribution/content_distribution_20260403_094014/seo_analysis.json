@@ -1,0 +1,62 @@
+{
+  "keyword_density": {
+    "passive income AI": {
+      "count": 0,
+      "density": 0.0
+    },
+    "automated income streams": {
+      "count": 0,
+      "density": 0.0
+    },
+    "side hustle automation": {
+      "count": 0,
+      "density": 0.0
+    },
+    "AI passive income": {
+      "count": 0,
+      "density": 0.0
+    },
+    "income automation 2026": {
+      "count": 0,
+      "density": 0.0
+    }
+  },
+  "word_count": 880,
+  "reading_time": 4,
+  "headings_structure": {
+    "total": 39,
+    "h1_count": 1,
+    "h2_count": 9,
+    "h3_count": 25,
+    "headings_list": [
+      "5 AI-Powered Passive Income Streams That Actually Work in 2026",
+      "Defining True Passive Income in 2026",
+      "Why AI Makes Passive Income Actually Possible Now",
+      "Stream #1: Content Recommendation Algorithms (Medium Effort, High Earnings)",
+      "Stream #2: Automated Dividend Reinvestment (Low Effort, Compound Growth)",
+      "Stream #3: AI Chatbot Monetization (8-15 Hours Setup, $200-1000/Month)",
+      "Stream #4: Licensing Digital Assets (10-20 Hours, $300-2000/Month)",
+      "Stream #5: Smart Lending Protocols (Medium Effort, 8-12% APY)",
+      "Real Challenges (And How to Overcome Them)",
+      "Frequently Asked Questions"
+    ]
+  },
+  "schema_recommendations": [
+    {
+      "type": "Article",
+      "description": "Standard article schema for blog posts",
+      "priority": "High"
+    },
+    {
+      "type": "Author",
+      "description": "Author schema with biographical information",
+      "priority": "High"
+    },
+    {
+      "type": "Description",
+      "description": "Meta description for search results",
+      "priority": "Medium"
+    }
+  ],
+  "seo_score": 85
+}

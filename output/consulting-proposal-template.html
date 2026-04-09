@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulting Proposal - Lumina Digital Solutions</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+
+        .proposal-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, #0f1628 0%, #1a1f3a 100%);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+            page-break-after: always;
+        }
+
+        /* Cover Page */
+        .cover-page {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #2d1b4e 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 60px 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cover-page::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .cover-page::after {
+            content: '';
+            position: absolute;
+            bottom: -30%;
+            left: -5%;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .cover-logo {
+            position: relative;
+            z-index: 1;
+            margin-bottom: 40px;
+        }
+
+        .logo-text {
+            font-size: 48px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .logo-tagline {
+            font-size: 14px;
+            color: #a0aec0;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .cover-title {
+            position: relative;
+            z-index: 1;
+            margin: 60px 0 40px;
+        }
+
+        .proposal-type {
+            font-size: 16px;
+            color: #6366f1;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+
+        .proposal-heading {
+            font-size: 56px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 30px;
+            line-height: 1.2;
+        }
+
+        .client-placeholder {
+            font-size: 24px;
+            color: #8b5cf6;
+            font-weight: 600;
+            margin: 40px 0;
+        }
+
+        .cover-divider {
+            width: 60px;
+            height: 3px;
+            background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+            margin: 40px auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .cover-footer {
+            position: relative;
+            z-index: 1;
+            margin-top: 80px;
+            padding-top: 40px;
+            border-top: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .footer-date {
+            color: #a0aec0;
+            margin-bottom: 20px;
+        }
+
+        .footer-contact {
+            font-size: 14px;
+            color: #a0aec0;
+        }
+
+        /* Content Pages */
+        .content-page {
+            padding: 60px 50px;
+            min-height: 100vh;
+            page-break-inside: avoid;
+        }
+
+        .section-title {
+            font-size: 36px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #6366f1;
+            position: relative;
+        }
+
+        .section-title::before {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+            width: 60px;
+        }
+
+        .subsection {
+            margin-bottom: 40px;
+        }
+
+        .subsection-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #6366f1;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .subsection-content {
+            color: #cbd5e1;
+            font-size: 15px;
+            line-height: 1.8;
+        }
+
+        .highlight-box {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+            border-left: 4px solid #6366f1;
+            padding: 25px;
+            margin: 25px 0;
+            border-radius: 8px;
+        }
+
+        .service-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 25px;
+            margin: 30px 0;
+        }
+
+        .service-card {
+            background: linear-gradient(135deg, rgba(26, 31, 58, 0.8) 0%, rgba(45, 27, 78, 0.8) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .service-card:hover {
+            border-color: #6366f1;
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.2);
+            transform: translateY(-5px);
+        }
+
+        .service-price {
+            font-size: 36px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .service-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 15px;
+        }
+
+        .service-features {
+            font-size: 13px;
+            color: #a0aec0;
+            text-align: left;
+            margin: 20px 0;
+        }
+
+        .service-features li {
+            margin-bottom: 8px;
+            margin-left: 20px;
+            list-style-type: disc;
+        }
+
+        .timeline-item {
+            display: grid;
+            grid-template-columns: 120px 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+            padding-bottom: 30px;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .timeline-item:last-child {
+            border-bottom: none;
+        }
+
+        .timeline-week {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-align: center;
+            height: fit-content;
+        }
+
+        .timeline-content h4 {
+            color: #fff;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .timeline-content p {
+            color: #cbd5e1;
+            font-size: 14px;
+        }
+
+        .pricing-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+        }
+
+        .pricing-table th {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+            border-bottom: 2px solid #6366f1;
+            padding: 15px;
+            text-align: left;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .pricing-table td {
+            padding: 15px;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+            color: #cbd5e1;
+        }
+
+        .pricing-table tr:hover {
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .accent-text {
+            color: #6366f1;
+            font-weight: 600;
+        }
+
+        .about-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-top: 30px;
+            align-items: center;
+        }
+
+        .about-content h3 {
+            color: #6366f1;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+        }
+
+        .about-content p {
+            color: #cbd5e1;
+            margin-bottom: 15px;
+            line-height: 1.8;
+        }
+
+        .capabilities-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .capability-item {
+            background: rgba(99, 102, 241, 0.1);
+            padding: 12px 15px;
+            border-radius: 6px;
+            color: #a0aec0;
+            font-size: 14px;
+        }
+
+        .signature-block {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+            border: 2px dashed #6366f1;
+            border-radius: 12px;
+            padding: 40px;
+            margin: 40px 0;
+            text-align: center;
+        }
+
+        .signature-header {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 30px;
+        }
+
+        .signature-line {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            margin-top: 40px;
+        }
+
+        .signature-item {
+            border-top: 1px solid #6366f1;
+            padding-top: 15px;
+            font-size: 13px;
+            color: #a0aec0;
+        }
+
+        .payment-section {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%);
+            border: 2px solid #8b5cf6;
+            border-radius: 12px;
+            padding: 35px;
+            margin: 30px 0;
+            text-align: center;
+        }
+
+        .payment-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 15px;
+        }
+
+        .payment-description {
+            color: #cbd5e1;
+            margin-bottom: 25px;
+            font-size: 14px;
+        }
+
+        .payment-link {
+            display: inline-block;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 15px 40px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .payment-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        .terms-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .terms-item {
+            background: rgba(99, 102, 241, 0.05);
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 3px solid #6366f1;
+        }
+
+        .terms-item h4 {
+            color: #6366f1;
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .terms-item p {
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .page-number {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            padding: 20px 0;
+            border-top: 1px solid rgba(99, 102, 241, 0.1);
+        }
+
+        .divider-accent {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #6366f1, transparent);
+            margin: 40px 0;
+        }
+
+        @media (max-width: 768px) {
+            .service-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .about-section {
+                grid-template-columns: 1fr;
+            }
+
+            .signature-line {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+
+            .terms-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .proposal-heading {
+                font-size: 36px;
+            }
+
+            .section-title {
+                font-size: 28px;
+            }
+
+            .content-page {
+                padding: 40px 25px;
+            }
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            .proposal-container {
+                box-shadow: none;
+                background: white;
+                color: #000;
+            }
+
+            .cover-page {
+                background: white;
+            }
+
+            .content-page {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="proposal-container">
+        <!-- COVER PAGE -->
+        <div class="cover-page">
+            <div class="cover-logo">
+                <div class="logo-text">Lumina Digital Solutions</div>
+                <div class="logo-tagline">Transforming Ideas Into Results</div>
+            </div>
+
+            <div class="cover-title">
+                <div class="proposal-type">Professional Consulting Proposal</div>
+                <div class="proposal-heading">Strategic AI & Trading Solutions</div>
+            </div>
+
+            <div class="cover-divider"></div>
+
+            <div class="client-placeholder">
+                Prepared for: [CLIENT_NAME]
+            </div>
+
+            <div class="cover-footer">
+                <div class="footer-date">Date: <span id="current-date"></span></div>
+                <div class="footer-contact">
+                    www.luminadigital.com | hello@luminadigital.com<br>
+                    Phone: (555) 123-4567
+                </div>
+            </div>
+        </div>
+
+        <!-- EXECUTIVE SUMMARY PAGE -->
+        <div class="content-page">
+            <h2 class="section-title">Executive Summary</h2>
+
+            <div class="subsection">
+                <p class="subsection-content">
+                    Thank you for considering Lumina Digital Solutions as your partner in digital transformation. This proposal outlines a comprehensive engagement to drive measurable business outcomes through AI automation, advanced trading systems, and custom technology solutions.
+                </p>
+            </div>
+
+            <div class="highlight-box">
+                <strong style="color: #e0e0e0;">Your Challenge:</strong>
+                <p style="margin-top: 10px; color: #cbd5e1;">
+                    In today's fast-paced digital economy, businesses need to operate smarter and faster. Manual processes drain resources, opportunities slip away, and competitive advantages erode. You need a trusted partner who understands both technology and business strategy.
+                </p>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Our Solution</h3>
+                <p class="subsection-content">
+                    Lumina Digital Solutions specializes in delivering transformative technology solutions that automate operations, optimize trading workflows, and create intelligent systems tailored to your unique business needs. With expertise spanning AI automation, MT5 trading infrastructure, and custom dashboard development, we translate complex business challenges into elegant, scalable solutions.
+                </p>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">What You Get</h3>
+                <ul style="color: #cbd5e1; margin-left: 20px; margin-top: 15px;">
+                    <li style="margin-bottom: 12px;">Strategic consulting to align technology with business objectives</li>
+                    <li style="margin-bottom: 12px;">Custom implementation of proven systems and frameworks</li>
+                    <li style="margin-bottom: 12px;">Dedicated project management and technical excellence</li>
+                    <li style="margin-bottom: 12px;">Ongoing support to ensure successful adoption</li>
+                    <li style="margin-bottom: 12px;">Measurable results delivered on schedule and budget</li>
+                </ul>
+            </div>
+
+            <div class="divider-accent"></div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Investment Overview</h3>
+                <p class="subsection-content" style="margin-bottom: 15px;">
+                    We offer flexible engagement models to match your business needs, from sprint-based retainers to comprehensive full-service solutions. Three service tiers are detailed in the Scope of Work section below.
+                </p>
+                <p class="subsection-content" style="color: #6366f1; font-weight: 600;">
+                    Total Investment Range: $500 - $10,000+
+                </p>
+            </div>
+
+            <div class="page-number">Page 1 of 6</div>
+        </div>
+
+        <!-- SCOPE OF WORK PAGE -->
+        <div class="content-page">
+            <h2 class="section-title">Scope of Work</h2>
+
+            <div class="subsection">
+                <p class="subsection-content" style="margin-bottom: 30px;">
+                    We've structured three service tiers to accommodate different business objectives and budgets. Each tier builds upon proven methodologies and includes dedicated support throughout the engagement.
+                </p>
+            </div>
+
+            <div class="service-grid">
+                <div class="service-card">
+                    <div class="service-price">$500</div>
+                    <div class="service-name">Starter Package</div>
+                    <ul class="service-features">
+                        <li>Initial AI Audit (4 hours)</li>
+                        <li>Process Assessment</li>
+                        <li>Automation Roadmap</li>
+                        <li>Discovery Report</li>
+                        <li>Email Support (30 days)</li>
+                    </ul>
+                    <p style="color: #a0aec0; font-size: 12px; margin-top: 15px; font-style: italic;">
+                        Perfect for exploring opportunities
+                    </p>
+                </div>
+
+                <div class="service-card">
+                    <div class="service-price">$2,500</div>
+                    <div class="service-name">Growth Package</div>
+                    <ul class="service-features">
+                        <li>Complete Consulting Sprint</li>
+                        <li>MT5 Trading Setup</li>
+                        <li>Prediction Market Integration</li>
+                        <li>Custom Configuration</li>
+                        <li>Training & Documentation</li>
+                        <li>90-Day Support</li>
+                    </ul>
+                    <p style="color: #a0aec0; font-size: 12px; margin-top: 15px; font-style: italic;">
+                        Most popular choice
+                    </p>
+                </div>
+
+                <div class="service-card">
+                    <div class="service-price">$10,000+</div>
+                    <div class="service-name">Enterprise Package</div>
+                    <ul class="service-features">
+                        <li>Full-Stack Implementation</li>
+                        <li>Custom Dashboard Dev</li>
+                        <li>Advanced AI Automation</li>
+                        <li>UGC Content System</li>
+                        <li>Dedicated Account Manager</li>
+                        <li>6-Month Support</li>
+                    </ul>
+                    <p style="color: #a0aec0; font-size: 12px; margin-top: 15px; font-style: italic;">
+                        For transformative results
+                    </p>
+                </div>
+            </div>
+
+            <div class="divider-accent"></div>
+
+            <h3 class="subsection-title" style="margin-top: 40px;">Core Service Offerings</h3>
+
+            <div class="subsection">
+                <p class="subsection-content" style="margin-bottom: 20px;">
+                    <span class="accent-text">1. AI Automation Consulting</span><br>
+                    Strategic hourly consulting to identify automation opportunities, design workflows, and implement intelligent systems. Rate: $150/hour. Typically 10-20 hours per engagement.
+                </p>
+
+                <p class="subsection-content" style="margin-bottom: 20px;">
+                    <span class="accent-text">2. Trading System Setup (MT5 + Prediction Markets)</span><br>
+                    Complete configuration of MetaTrader 5 infrastructure integrated with prediction market analysis. Includes environment setup, custom indicators, and market data integration. Fixed: $2,500 per implementation.
+                </p>
+
+                <p class="subsection-content" style="margin-bottom: 20px;">
+                    <span class="accent-text">3. Custom Dashboard Development</span><br>
+                    Bespoke data visualization and control panel designed specifically for your workflows. Includes real-time data integration, custom metrics, and responsive design. Range: $1,500-$5,000 depending on complexity.
+                </p>
+
+                <p class="subsection-content">
+                    <span class="accent-text">4. UGC Content Production</span><br>
+                    Professional User-Generated Content creation for marketing and engagement. Includes script writing, production oversight, and delivery. Rate: $75-$150 per script based on scope and revisions.
+                </p>
+            </div>
+
+            <div class="page-number">Page 2 of 6</div>
+        </div>
+
+        <!-- TIMELINE PAGE -->
+        <div class="content-page">
+            <h2 class="section-title">Project Timeline</h2>
+
+            <div class="subsection">
+                <p class="subsection-content" style="margin-bottom: 30px;">
+                    Our proven 4-week sprint methodology ensures rapid deployment with thorough quality assurance. Below is a typical engagement timeline for the Growth Package.
+                </p>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-week">Week 1</div>
+                <div class="timeline-content">
+                    <h4>Discovery & Planning</h4>
+                    <p>Initial stakeholder meetings, requirement gathering, system analysis, and project roadmap development. Deliverables: Requirement document and implementation plan.</p>
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-week">Week 2</div>
+                <div class="timeline-content">
+                    <h4>Configuration & Setup</h4>
+                    <p>MT5 environment configuration, prediction market integration, custom indicator development, and preliminary testing. Deliverables: Configured trading environment and test results.</p>
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-week">Week 3</div>
+                <div class="timeline-content">
+                    <h4>Refinement & Integration</h4>
+                    <p>System optimization, performance tuning, data validation, and full integration testing. Deliverables: Optimization report and test coverage summary.</p>
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-week">Week 4</div>
+                <div class="timeline-content">
+                    <h4>Launch & Training</h4>
+                    <p>Production deployment, team training sessions, documentation delivery, and post-launch support setup. Deliverables: All systems live, training materials, and support onboarding.</p>
+                </div>
+            </div>
+
+            <div class="divider-accent"></div>
+
+            <div class="highlight-box">
+                <strong style="color: #e0e0e0;">Accelerated Timeline Available</strong>
+                <p style="margin-top: 10px; color: #cbd5e1;">
+                    We can compress this timeline to 2-3 weeks for an expedited delivery at 20% premium. Priority support and weekend availability included.
+                </p>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title" style="margin-top: 40px;">Key Milestones</h3>
+                <table class="pricing-table">
+                    <thead>
+                        <tr>
+                            <th>Milestone</th>
+                            <th>Target Date</th>
+                            <th>Deliverables</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Kickoff</strong></td>
+                            <td>Day 1</td>
+                            <td>Project charter, team assignments</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Requirements Complete</strong></td>
+                            <td>Day 5</td>
+                            <td>Requirements document, sign-off</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Configuration Complete</strong></td>
+                            <td>Day 12</td>
+                            <td>Functional trading environment</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Testing Phase</strong></td>
+                            <td>Day 18</td>
+                            <td>QA report, optimization findings</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Go-Live</strong></td>
+                            <td>Day 28</td>
+                            <td>Production environment, training materials</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="page-number">Page 3 of 6</div>
+        </div>
+
+        <!-- INVESTMENT & PAYMENT PAGE -->
+        <div class="content-page">
+            <h2 class="section-title">Investment & Payment Terms</h2>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Investment Breakdown</h3>
+                <p class="subsection-content" style="margin-bottom: 25px;">
+                    Your investment in digital transformation depends on the selected service tier and any optional add-ons. Below is our standard pricing structure:
+                </p>
+
+                <table class="pricing-table">
+                    <thead>
+                        <tr>
+                            <th>Service Tier</th>
+                            <th>Base Investment</th>
+                            <th>Typical Scope</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Starter</strong></td>
+                            <td><strong>$500</strong></td>
+                            <td>Initial audit and roadmap</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Growth</strong></td>
+                            <td><strong>$2,500</strong></td>
+                            <td>Full sprint with trading setup</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Enterprise</strong></td>
+                            <td><strong>$10,000+</strong></td>
+                            <td>Complete custom implementation</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Optional Add-ons</h3>
+                <p class="subsection-content" style="margin-bottom: 15px;">
+                    Enhance your engagement with additional services:
+                </p>
+                <ul style="color: #cbd5e1; margin-left: 20px; margin-top: 15px;">
+                    <li style="margin-bottom: 12px;"><strong>Custom Dashboard Development:</strong> $1,500-$5,000 (add to any package)</li>
+                    <li style="margin-bottom: 12px;"><strong>UGC Content Package (5 scripts):</strong> $500 ($75-150 each)</li>
+                    <li style="margin-bottom: 12px;"><strong>Extended Support (90 days):</strong> $500</li>
+                    <li style="margin-bottom: 12px;"><strong>Advanced AI Integration:</strong> $2,000-$3,000</li>
+                </ul>
+            </div>
+
+            <div class="divider-accent"></div>
+
+            <div class="payment-section">
+                <div class="payment-title">Secure Online Payment</div>
+                <div class="payment-description">
+                    Lock in your engagement and get started immediately. Pay securely via Stripe with multiple payment options available.
+                </div>
+                <a href="https://buy.stripe.com/[STRIPE_LINK_PLACEHOLDER]" class="payment-link">
+                    Proceed to Payment
+                </a>
+                <p style="color: #a0aec0; font-size: 12px; margin-top: 20px;">
+                    Note: Replace [STRIPE_LINK_PLACEHOLDER] with your actual Stripe payment link
+                </p>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title" style="margin-top: 40px;">Payment Terms</h3>
+                <p class="subsection-content" style="margin-bottom: 15px;">
+                    We believe in transparent, straightforward payment arrangements:
+                </p>
+
+                <div class="terms-grid">
+                    <div class="terms-item">
+                        <h4>Deposit & Schedule</h4>
+                        <p>50% of total investment due upon engagement signing. Remaining 50% due upon project delivery and sign-off.</p>
+                    </div>
+
+                    <div class="terms-item">
+                        <h4>Flexible Options</h4>
+                        <p>For engagements over $5,000, we offer 2-3 milestone-based payment schedules. Discuss with your account manager.</p>
+                    </div>
+
+                    <div class="terms-item">
+                        <h4>Accepted Payment Methods</h4>
+                        <p>Credit card (Visa, Mastercard, Amex), ACH transfer, wire transfer, and crypto payments available upon request.</p>
+                    </div>
+
+                    <div class="terms-item">
+                        <h4>Invoicing</h4>
+                        <p>Detailed invoices provided at signature and upon delivery. All prices in USD. Custom terms available for enterprise clients.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="page-number">Page 4 of 6</div>
+        </div>
+
+        <!-- ABOUT US PAGE -->
+        <div class="content-page">
+            <h2 class="section-title">About Lumina Digital Solutions</h2>
+
+            <div class="subsection">
+                <p class="subsection-content" style="margin-bottom: 30px;">
+                    Lumina Digital Solutions is a boutique technology consulting firm specializing in AI automation, advanced trading systems, and custom software development. We partner with forward-thinking organizations to transform their operations through intelligent technology.
+                </p>
+            </div>
+
+            <div class="about-section">
+                <div class="about-content">
+                    <h3>Our Expertise</h3>
+                    <p>
+                        With over 10+ years of combined experience in fintech, automation, and software development, our team brings deep technical knowledge paired with business acumen. We don't just build systems—we build success.
+                    </p>
+                    <p>
+                        Our specialists have implemented solutions for startups, mid-market companies, and enterprise organizations across multiple industries. We understand the unique challenges of scaling technology and translating business needs into elegant solutions.
+                    </p>
+
+                    <div class="capabilities-list">
+                        <div class="capability-item">AI & Machine Learning</div>
+                        <div class="capability-item">MetaTrader 5 (MT5)</div>
+                        <div class="capability-item">Trading Systems</div>
+                        <div class="capability-item">Prediction Markets</div>
+                        <div class="capability-item">Dashboard Development</div>
+                        <div class="capability-item">Process Automation</div>
+                        <div class="capability-item">API Integration</div>
+                        <div class="capability-item">Cloud Architecture</div>
+                        <div class="capability-item">UGC Production</div>
+                        <div class="capability-item">Strategic Consulting</div>
+                    </div>
+                </div>
+
+                <div class="about-content">
+                    <h3>Why Partner With Us</h3>
+                    <p>
+                        <strong style="color: #e0e0e0;">Proven Results:</strong> Our clients see measurable improvements in efficiency, revenue, and competitive positioning within 30-90 days.
+                    </p>
+                    <p>
+                        <strong style="color: #e0e0e0;">Dedicated Support:</strong> You get a dedicated account manager and 24-hour response times on critical issues.
+                    </p>
+                    <p>
+                        <strong style="color: #e0e0e0;">Scalable Solutions:</strong> Our implementations grow with your business, from startups to enterprise scale.
+                    </p>
+                    <p>
+                        <strong style="color: #e0e0e0;">Industry Best Practices:</strong> We follow proven methodologies, frameworks, and security standards.
+                    </p>
+                    <p>
+                        <strong style="color: #e0e0e0;">Transparent Communication:</strong> Regular updates, clear documentation, and honest timelines.
+                    </p>
+                </div>
+            </div>
+
+            <div class="divider-accent" style="margin-top: 50px;"></div>
+
+            <div class="highlight-box">
+                <strong style="color: #e0e0e0;">Client Success Stories</strong>
+                <p style="margin-top: 15px; color: #cbd5e1;">
+                    We've helped technology companies reduce operational overhead by 40%, trading firms increase throughput by 300%, and startups launch market-ready systems in under 30 days. References available upon request.
+                </p>
+            </div>
+
+            <div class="page-number">Page 5 of 6</div>
+        </div>
+
+        <!-- SIGNATURE & TERMS PAGE -->
+        <div class="content-page">
+            <h2 class="section-title">Acceptance & Terms</h2>
+
+            <div class="subsection">
+                <p class="subsection-content" style="margin-bottom: 30px;">
+                    Please review the terms below and sign to accept this proposal and begin your transformation journey with Lumina Digital Solutions.
+                </p>
+            </div>
+
+            <div class="signature-block">
+                <div class="signature-header">Proposal Acceptance</div>
+                <p style="color: #cbd5e1; margin-bottom: 30px; font-size: 14px;">
+                    I/We have reviewed this proposal and agree to engage Lumina Digital Solutions under the terms outlined herein.
+                </p>
+
+                <div class="signature-line">
+                    <div class="signature-item">
+                        <div style="margin-bottom: 5px;">Client Signature</div>
+                        <div style="font-size: 12px; margin-top: 5px;">_____________________</div>
+                    </div>
+                    <div class="signature-item">
+                        <div style="margin-bottom: 5px;">Date</div>
+                        <div style="font-size: 12px; margin-top: 5px;">_____________________</div>
+                    </div>
+                </div>
+
+                <div class="signature-line" style="margin-top: 30px;">
+                    <div class="signature-item">
+                        <div style="margin-bottom: 5px;">Client Name (Print)</div>
+                        <div style="font-size: 12px; margin-top: 5px;">_____________________</div>
+                    </div>
+                    <div class="signature-item">
+                        <div style="margin-bottom: 5px;">Title</div>
+                        <div style="font-size: 12px; margin-top: 5px;">_____________________</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="divider-accent"></div>
+
+            <h3 class="subsection-title">Key Terms & Conditions</h3>
+
+            <div class="terms-grid">
+                <div class="terms-item">
+                    <h4>Scope & Deliverables</h4>
+                    <p>Scope of work is limited to services outlined in this proposal. Any changes require a written change order and may affect timeline and cost.</p>
+                </div>
+
+                <div class="terms-item">
+                    <h4>Confidentiality</h4>
+                    <p>Both parties agree to maintain confidentiality of proprietary information shared during the engagement. NDA available upon request.</p>
+                </div>
+
+                <div class="terms-item">
+                    <h4>Intellectual Property</h4>
+                    <p>Custom code, configurations, and deliverables become your property upon final payment. We retain rights to methodologies and frameworks used.</p>
+                </div>
+
+                <div class="terms-item">
+                    <h4>Support & Maintenance</h4>
+                    <p>Included support covers implementation issues only. Extended maintenance and enhancements are billed separately after initial engagement.</p>
+                </div>
+
+                <div class="terms-item">
+                    <h4>Cancellation Policy</h4>
+                    <p>Projects cancelled before kickoff are refundable. Post-kickoff cancellations forfeit 50% of upfront payment; additional fees may apply.</p>
+                </div>
+
+                <div class="terms-item">
+                    <h4>Limitation of Liability</h4>
+                    <p>Our liability is limited to fees paid for the specific engagement. We are not liable for indirect, consequential, or punitive damages.</p>
+                </div>
+
+                <div class="terms-item">
+                    <h4>Performance Guarantee</h4>
+                    <p>We guarantee professional, timely delivery of stated deliverables. If issues arise, we'll work to resolve them at no additional cost.</p>
+                </div>
+
+                <div class="terms-item">
+                    <h4>Governing Law</h4>
+                    <p>This proposal is governed by the laws of the jurisdiction where Lumina Digital Solutions is incorporated. Disputes resolved through negotiation or arbitration.</p>
+                </div>
+            </div>
+
+            <div class="divider-accent"></div>
+
+            <div class="subsection" style="margin-top: 40px;">
+                <h3 class="subsection-title">Next Steps</h3>
+                <ol style="color: #cbd5e1; margin-left: 20px; margin-top: 15px;">
+                    <li style="margin-bottom: 12px;"><strong>Review:</strong> Carefully review this entire proposal</li>
+                    <li style="margin-bottom: 12px;"><strong>Sign:</strong> Sign and date the acceptance section above</li>
+                    <li style="margin-bottom: 12px;"><strong>Payment:</strong> Submit your deposit via Stripe or preferred payment method</li>
+                    <li style="margin-bottom: 12px;"><strong>Kickoff:</strong> We'll contact you within 24 hours to schedule your kickoff meeting</li>
+                    <li style="margin-bottom: 12px;"><strong>Delivery:</strong> Your transformation begins immediately</li>
+                </ol>
+            </div>
+
+            <div class="highlight-box" style="margin-top: 40px;">
+                <strong style="color: #e0e0e0;">Questions?</strong>
+                <p style="margin-top: 10px; color: #cbd5e1;">
+                    Contact your account manager or reach out directly: <span class="accent-text">hello@luminadigital.com</span> | <span class="accent-text">(555) 123-4567</span>
+                </p>
+            </div>
+
+            <div class="page-number">Page 6 of 6</div>
+        </div>
+    </div>
+
+    <script>
+        // Set current date on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date();
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            const formattedDate = today.toLocaleDateString('en-US', options);
+            document.getElementById('current-date').textContent = formattedDate;
+        });
+
+        // Print-friendly version
+        function printProposal() {
+            window.print();
+        }
+    </script>
+</body>
+</html>

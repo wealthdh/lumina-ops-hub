@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI UGC Factory - Customer Acquisition Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+
+        /* Header & Navigation */
+        header {
+            background: rgba(15, 23, 42, 0.95);
+            border-bottom: 1px solid rgba(6, 182, 212, 0.1);
+            padding: 1.5rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #06b6d4;
+            letter-spacing: -0.5px;
+        }
+
+        nav a {
+            color: #cbd5e1;
+            text-decoration: none;
+            margin-left: 2rem;
+            font-size: 0.95rem;
+            transition: color 0.3s ease;
+        }
+
+        nav a:hover {
+            color: #06b6d4;
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            padding: 6rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid rgba(6, 182, 212, 0.1);
+        }
+
+        .hero-content {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            line-height: 1.2;
+            color: #f1f5f9;
+        }
+
+        .hero h1 span {
+            color: #06b6d4;
+        }
+
+        .hero p {
+            font-size: 1.3rem;
+            color: #94a3b8;
+            margin-bottom: 2rem;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-primary {
+            display: inline-block;
+            background: #06b6d4;
+            color: #0f172a;
+            padding: 1rem 2.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border: 2px solid #06b6d4;
+            font-size: 1.1rem;
+        }
+
+        .cta-primary:hover {
+            background: transparent;
+            color: #06b6d4;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.2);
+        }
+
+        /* Section Container */
+        section {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        section h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 3rem;
+            text-align: center;
+            color: #f1f5f9;
+        }
+
+        section h2 span {
+            color: #06b6d4;
+        }
+
+        /* Problem Section */
+        .problem-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+        }
+
+        .problem-text h3 {
+            font-size: 1.8rem;
+            color: #fbbf24;
+            margin-bottom: 1.5rem;
+        }
+
+        .problem-text p {
+            color: #cbd5e1;
+            margin-bottom: 1.5rem;
+            font-size: 1.05rem;
+        }
+
+        .problem-stats {
+            background: rgba(6, 182, 212, 0.05);
+            border-left: 4px solid #06b6d4;
+            padding: 2rem;
+            border-radius: 0.5rem;
+        }
+
+        .stat-item {
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #06b6d4;
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            font-size: 0.95rem;
+        }
+
+        /* Solution Section */
+        .solution {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(6, 182, 212, 0.02) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.1);
+            border-radius: 1rem;
+        }
+
+        .solution-intro {
+            text-align: center;
+            margin-bottom: 3rem;
+            font-size: 1.1rem;
+            color: #cbd5e1;
+        }
+
+        .niches {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .niche-badge {
+            background: rgba(6, 182, 212, 0.1);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            color: #06b6d4;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .niche-badge:hover {
+            background: rgba(6, 182, 212, 0.2);
+            border-color: #06b6d4;
+        }
+
+        /* How It Works */
+        .how-it-works {
+            background: #0f172a;
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 2rem;
+        }
+
+        .step {
+            background: rgba(6, 182, 212, 0.05);
+            border: 1px solid rgba(6, 182, 212, 0.1);
+            padding: 2rem;
+            border-radius: 0.75rem;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .step:hover {
+            border-color: #06b6d4;
+            background: rgba(6, 182, 212, 0.1);
+        }
+
+        .step-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #06b6d4;
+            margin-bottom: 1rem;
+        }
+
+        .step h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: #f1f5f9;
+        }
+
+        .step p {
+            color: #94a3b8;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Pricing */
+        .pricing {
+            background: #1e293b;
+        }
+
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .pricing-card {
+            background: rgba(6, 182, 212, 0.03);
+            border: 2px solid rgba(6, 182, 212, 0.1);
+            border-radius: 0.75rem;
+            padding: 2.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .pricing-card:hover {
+            border-color: #06b6d4;
+            background: rgba(6, 182, 212, 0.08);
+            transform: translateY(-5px);
+        }
+
+        .pricing-card.featured {
+            border-color: #06b6d4;
+            background: rgba(6, 182, 212, 0.1);
+            transform: scale(1.05);
+        }
+
+        .badge-featured {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #06b6d4;
+            color: #0f172a;
+            padding: 0.5rem 1.5rem;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .pricing-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #f1f5f9;
+        }
+
+        .pricing-price {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #06b6d4;
+            margin-bottom: 0.5rem;
+        }
+
+        .pricing-period {
+            color: #94a3b8;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+
+        .pricing-features {
+            list-style: none;
+            text-align: left;
+            margin-bottom: 2rem;
+        }
+
+        .pricing-features li {
+            color: #cbd5e1;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid rgba(6, 182, 212, 0.1);
+            font-size: 0.95rem;
+        }
+
+        .pricing-features li:last-child {
+            border-bottom: none;
+        }
+
+        .pricing-features li:before {
+            content: "✓ ";
+            color: #06b6d4;
+            font-weight: 700;
+            margin-right: 0.5rem;
+        }
+
+        .pricing-cta {
+            display: inline-block;
+            background: rgba(6, 182, 212, 0.2);
+            color: #06b6d4;
+            padding: 0.75rem 2rem;
+            border-radius: 0.5rem;
+            border: 2px solid #06b6d4;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            width: 100%;
+            text-align: center;
+        }
+
+        .pricing-cta:hover {
+            background: #06b6d4;
+            color: #0f172a;
+        }
+
+        /* Results / Case Studies */
+        .results {
+            background: #0f172a;
+        }
+
+        .case-studies {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .case-study {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(6, 182, 212, 0.03) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 0.75rem;
+            padding: 2.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .case-study:hover {
+            border-color: #06b6d4;
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.15);
+        }
+
+        .case-study-company {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #06b6d4;
+            margin-bottom: 1rem;
+        }
+
+        .case-study-result {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #fbbf24;
+            margin-bottom: 0.5rem;
+        }
+
+        .case-study-metric {
+            color: #94a3b8;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+        }
+
+        .case-study-niche {
+            display: inline-block;
+            background: rgba(6, 182, 212, 0.15);
+            color: #06b6d4;
+            padding: 0.5rem 1rem;
+            border-radius: 0.35rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(6, 182, 212, 0.05) 100%);
+            border: 2px solid rgba(6, 182, 212, 0.2);
+            border-radius: 1rem;
+            padding: 4rem 2rem;
+            text-align: center;
+        }
+
+        .cta-section h2 {
+            margin-bottom: 1.5rem;
+            font-size: 2.2rem;
+        }
+
+        .cta-section p {
+            font-size: 1.1rem;
+            color: #cbd5e1;
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .cta-secondary {
+            display: inline-block;
+            color: #06b6d4;
+            padding: 0.75rem 2rem;
+            border: 2px solid #06b6d4;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            background: transparent;
+        }
+
+        .cta-secondary:hover {
+            background: #06b6d4;
+            color: #0f172a;
+        }
+
+        /* Footer */
+        footer {
+            background: #0a0f1f;
+            border-top: 1px solid rgba(6, 182, 212, 0.1);
+            padding: 3rem 2rem;
+            text-align: center;
+            color: #64748b;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-logo {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #06b6d4;
+            margin-bottom: 1rem;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin: 1.5rem 0;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: #64748b;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-links a:hover {
+            color: #06b6d4;
+        }
+
+        .footer-legal {
+            font-size: 0.85rem;
+            color: #475569;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(6, 182, 212, 0.05);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.2rem;
+            }
+
+            .problem-content {
+                grid-template-columns: 1fr;
+            }
+
+            section h2 {
+                font-size: 1.8rem;
+            }
+
+            .pricing-card.featured {
+                transform: scale(1);
+            }
+
+            nav {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            nav a {
+                margin-left: 0;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+            }
+
+            .cta-primary,
+            .cta-secondary,
+            .pricing-cta {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero {
+                padding: 3rem 1.5rem;
+            }
+
+            .hero h1 {
+                font-size: 1.8rem;
+            }
+
+            section {
+                padding: 2rem 1.5rem;
+            }
+
+            .pricing-price {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <nav>
+            <div class="logo">Lumina UGC Factory</div>
+            <div style="display: flex; gap: 2rem;">
+                <a href="#solution">Solution</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#results">Results</a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>AI-Powered <span>Customer Acquisition</span> for Your Business</h1>
+            <p>Stop spending on vanity metrics. Get real customers through proven, data-driven social media campaigns.</p>
+            <a href="#cta" class="cta-primary">Book Your Free Strategy Call</a>
+        </div>
+    </section>
+
+    <!-- Problem Section -->
+    <section>
+        <h2>The <span>Problem</span></h2>
+        <div class="problem-content">
+            <div class="problem-text">
+                <h3>You're Stuck in the Measurement Gap</h3>
+                <p>You're running Facebook and Instagram ads, but you can't track which ones are actually bringing customers in the door. Your agency sends you "impressions" and "engagement metrics" that don't translate to revenue.</p>
+                <p>Meanwhile, your competitor just landed 40+ new clients this month using a system you've never heard of.</p>
+            </div>
+            <div class="problem-stats">
+                <div class="stat-item">
+                    <div class="stat-number">78%</div>
+                    <div class="stat-label">of small businesses can't track their ad ROI</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">$4,200</div>
+                    <div class="stat-label">avg monthly ad spend with <em>no customer attribution</em></div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">60 days</div>
+                    <div class="stat-label">average campaign setup with traditional agencies</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Solution Section -->
+    <section id="solution">
+        <h2>Our <span>Solution</span></h2>
+        <div class="solution">
+            <p class="solution-intro">We run done-for-you, AI-generated UGC (User-Generated Content) campaigns tailored to your niche. You get new customers, not just clicks. Setup in 7 days. Results in 30.</p>
+
+            <h3 style="text-align: center; color: #f1f5f9; margin: 3rem 0 1.5rem; font-size: 1.3rem;">We Specialize In</h3>
+            <div class="niches">
+                <div class="niche-badge">Dentistry & Orthodontics</div>
+                <div class="niche-badge">Fitness & Gyms</div>
+                <div class="niche-badge">Medical Spas & Aesthetics</div>
+                <div class="niche-badge">HVAC & Plumbing</div>
+                <div class="niche-badge">Roofing & Construction</div>
+                <div class="niche-badge">Salons & Beauty</div>
+                <div class="niche-badge">Law Firms & Legal</div>
+                <div class="niche-badge">Home Services</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-it-works" id="process">
+        <h2>How It <span>Works</span></h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <h3>Niche Research</h3>
+                <p>We deep-dive into your industry, competitors, and ideal customer. In 48 hours, you have a custom targeting playbook.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <h3>AI Content Creation</h3>
+                <p>Our AI team generates authentic, niche-specific UGC videos. These are the ads your competitors will wish they made.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <h3>Targeted Ad Campaigns</h3>
+                <p>We launch on Facebook, Instagram, and TikTok with laser-focused audience targeting. Your budget reaches actual prospects.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <h3>Weekly Customer Reports</h3>
+                <p>Every week, you get a dashboard showing exactly how many customers came in, cost per acquisition, and what worked.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section id="pricing" class="pricing">
+        <h2><span>Pricing</span> Plans</h2>
+        <p style="text-align: center; color: #cbd5e1; margin-bottom: 2rem; font-size: 1.05rem;">Choose the plan that fits your growth stage. All plans include dedicated account management and 30-day optimization.</p>
+
+        <div class="pricing-grid">
+            <!-- Starter -->
+            <div class="pricing-card">
+                <h3>Starter</h3>
+                <div class="pricing-price">$3K</div>
+                <div class="pricing-period">per month</div>
+                <ul class="pricing-features">
+                    <li>1 social platform (Facebook or Instagram)</li>
+                    <li>4-6 UGC videos/month</li>
+                    <li>Audience research & targeting</li>
+                    <li>Weekly performance reports</li>
+                    <li>Email support</li>
+                </ul>
+                <a href="#contact" class="pricing-cta">Get Started</a>
+            </div>
+
+            <!-- Growth (Featured) -->
+            <div class="pricing-card featured">
+                <div class="badge-featured">Most Popular</div>
+                <h3>Growth</h3>
+                <div class="pricing-price">$4K</div>
+                <div class="pricing-period">per month</div>
+                <ul class="pricing-features">
+                    <li>3 platforms (FB, IG, TikTok)</li>
+                    <li>8-10 UGC videos/month</li>
+                    <li>A/B testing on all creatives</li>
+                    <li>Bi-weekly strategy calls</li>
+                    <li>Priority email & Slack support</li>
+                </ul>
+                <a href="#contact" class="pricing-cta">Get Started</a>
+            </div>
+
+            <!-- Scale -->
+            <div class="pricing-card">
+                <h3>Scale</h3>
+                <div class="pricing-price">$5K</div>
+                <div class="pricing-period">per month</div>
+                <ul class="pricing-features">
+                    <li>All platforms + YouTube Shorts</li>
+                    <li>15+ UGC videos/month</li>
+                    <li>Custom landing pages included</li>
+                    <li>Weekly 1:1 strategy sessions</li>
+                    <li>24-hour priority support</li>
+                </ul>
+                <a href="#contact" class="pricing-cta">Get Started</a>
+            </div>
+        </div>
+
+        <p style="text-align: center; color: #94a3b8; margin-top: 2rem; font-size: 0.95rem;">All plans include a 30-day performance guarantee. If you don't see qualified leads, we optimize free for 2 more weeks.</p>
+    </section>
+
+    <!-- Results / Case Studies -->
+    <section id="results" class="results">
+        <h2>Proven <span>Results</span></h2>
+        <div class="case-studies">
+            <div class="case-study">
+                <div class="case-study-company">DentalBright</div>
+                <div class="case-study-result">47 New Patients</div>
+                <div class="case-study-metric">in 30 days | $142 per patient</div>
+                <p style="color: #cbd5e1; margin-bottom: 1rem; font-size: 0.95rem;">"We couldn't believe the quality of leads. Within 4 weeks, our schedule was completely booked. This is exactly what we needed."</p>
+                <div class="case-study-niche">Dental Practice</div>
+            </div>
+
+            <div class="case-study">
+                <div class="case-study-company">FitCore Gym</div>
+                <div class="case-study-result">112 New Members</div>
+                <div class="case-study-metric">$8.20 cost per acquisition | $6,500 first month revenue</div>
+                <p style="color: #cbd5e1; margin-bottom: 1rem; font-size: 0.95rem;">"The UGC content felt real, not like traditional ads. Our conversion rate tripled compared to our old campaigns."</p>
+                <div class="case-study-niche">Fitness & Wellness</div>
+            </div>
+
+            <div class="case-study">
+                <div class="case-study-company">Glow Med Spa</div>
+                <div class="case-study-result">28 New Clients</div>
+                <div class="case-study-metric">$143 per booking | 3.2x ROAS in 6 weeks</div>
+                <p style="color: #cbd5e1; margin-bottom: 1rem; font-size: 0.95rem;">"The videos were exactly on-brand. The targeting was perfect. We finally have a marketing channel that actually works."</p>
+                <div class="case-study-niche">Medical Aesthetics</div>
+            </div>
+
+            <div class="case-study">
+                <div class="case-study-company">RoofPro Solutions</div>
+                <div class="case-study-result">19 Qualified Leads</div>
+                <div class="case-study-metric">$263 per lead | $92K pipeline in month 1</div>
+                <p style="color: #cbd5e1; margin-bottom: 1rem; font-size: 0.95rem;">"In a B2B space, lead quality is everything. These leads actually convert. Game changer for our company."</p>
+                <div class="case-study-niche">Home Services</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section id="cta">
+        <div class="cta-section">
+            <h2>Ready to <span>Acquire</span> Your Next Batch of Customers?</h2>
+            <p>Your first 30 days could look like our case studies. Let's talk about what's possible for your business.</p>
+            <div class="cta-buttons">
+                <a href="mailto:hello@luminaugcfactory.com?subject=Free%20Strategy%20Call%20Request" class="cta-primary">Book Your Free Strategy Call</a>
+                <a href="#pricing" class="cta-secondary">View Pricing</a>
+            </div>
+            <p style="margin-top: 2rem; font-size: 0.9rem; color: #64748b;">No credit card required. No long-term contracts. Let's see if we're a fit for each other.</p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-logo">Lumina UGC Factory</div>
+            <p style="margin: 1rem 0; color: #94a3b8;">AI-Powered Customer Acquisition</p>
+            <div class="footer-links">
+                <a href="mailto:hello@luminaugcfactory.com">Contact</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#results">Case Studies</a>
+                <a href="#process">How It Works</a>
+            </div>
+            <div class="footer-legal">
+                <p>&copy; 2026 Lumina Pulse. All rights reserved.</p>
+                <p>We help businesses acquire customers through AI-generated content and precision targeting.</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

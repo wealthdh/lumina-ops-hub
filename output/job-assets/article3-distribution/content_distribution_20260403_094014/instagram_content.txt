@@ -1,0 +1,46 @@
+======================================================================
+PLATFORM: Instagram (Caption + 5-slide carousel)
+======================================================================
+
+CAPTION:
+5 AI-Powered Passive Income Streams That Actually Work in 2026
+
+Defining True Passive Income
+
+Why AI Changes Everything
+
+Stream #1: Content Recommendation Algorithms
+
+Stream #2: Automated Dividend...
+
+#content #insights #strategy
+
+CAROUSEL_OUTLINE:
+  slide: 1
+  title: Hook
+  content: 5 AI-Powered Passive Income Streams That Actually Work in 2026
+  design: Bold headline with contrasting background
+  slide: 2
+  title: Key Point 1
+  content: 5 AI-Powered Passive Income Streams That Actually Work in 2026
+  design: Single point with icon
+  slide: 3
+  title: Key Point 2
+  content: Defining True Passive Income in 2026
+  design: Single point with icon
+  slide: 4
+  title: Statistics
+  content: Add key statistics or data points
+  design: Number-focused with clean layout
+  slide: 5
+  title: CTA
+  content: Link in bio to read full article
+  design: Action-oriented with link emphasis
+
+======================================================================
+NOTES:
+  • Review and customize before posting
+  • Ensure links are active and relevant
+  • Adapt tone for platform-specific audience
+  • Include hashtags and mentions where appropriate
+======================================================================

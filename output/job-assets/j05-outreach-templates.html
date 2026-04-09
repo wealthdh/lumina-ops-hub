@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job 5 — AI Client Acquisition Outreach Templates</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            margin-bottom: 50px;
+            border-bottom: 2px solid #06b6d4;
+            padding-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 32px;
+            color: #06b6d4;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            font-size: 16px;
+        }
+
+        .section {
+            margin-bottom: 45px;
+        }
+
+        .section-title {
+            font-size: 24px;
+            color: #06b6d4;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(6, 182, 212, 0.3);
+        }
+
+        .template-card {
+            background-color: #1e293b;
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+
+        .template-card:hover {
+            border-color: #06b6d4;
+        }
+
+        .template-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .template-name {
+            font-size: 18px;
+            color: #06b6d4;
+            font-weight: 600;
+        }
+
+        .copy-btn {
+            background-color: #06b6d4;
+            color: #0f172a;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+
+        .copy-btn:hover {
+            background-color: #00d9ff;
+            transform: translateY(-2px);
+        }
+
+        .copy-btn:active {
+            transform: translateY(0);
+        }
+
+        .copy-feedback {
+            color: #10b981;
+            font-size: 12px;
+            margin-top: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .copy-feedback.show {
+            opacity: 1;
+        }
+
+        .email-section {
+            margin-bottom: 20px;
+        }
+
+        .email-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .email-content {
+            background-color: #0f172a;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 3px solid #06b6d4;
+            font-size: 14px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .placeholder {
+            color: #fbbf24;
+            font-weight: 500;
+        }
+
+        .stats {
+            color: #10b981;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+
+        .dm-scripts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .dm-card {
+            background-color: #1e293b;
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            transition: border-color 0.3s;
+        }
+
+        .dm-card:hover {
+            border-color: #06b6d4;
+        }
+
+        .dm-number {
+            font-size: 14px;
+            color: #64748b;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .dm-text {
+            background-color: #0f172a;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 3px solid #06b6d4;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .notes {
+            background-color: #1e293b;
+            border-left: 4px solid #fbbf24;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #cbd5e1;
+        }
+
+        .notes strong {
+            color: #fbbf24;
+        }
+
+        footer {
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(6, 182, 212, 0.2);
+            text-align: center;
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 24px;
+            }
+
+            .template-header {
+                flex-direction: column;
+            }
+
+            .copy-btn {
+                margin-top: 10px;
+                align-self: flex-start;
+            }
+
+            .dm-scripts {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>Job 5 — AI Client Acquisition Outreach Templates</h1>
+            <p class="subtitle">Cold outreach templates for landing $3-5K/month retainer clients | 5 email templates + LinkedIn DM scripts</p>
+        </header>
+
+        <!-- Cold Email Templates Section -->
+        <div class="section">
+            <h2 class="section-title">Cold Email Templates</h2>
+            <p style="color: #94a3b8; margin-bottom: 25px; font-size: 14px;">Copy-paste ready. Replace [PLACEHOLDERS] with prospect details. Keep word count under 150 words.</p>
+
+            <!-- Template 1: Dentist Niche -->
+            <div class="template-card">
+                <div class="template-header">
+                    <span class="template-name">1. Cold Email — Dentist Niche</span>
+                    <button class="copy-btn" onclick="copyToClipboard(this, 'dentist-email')">Copy All</button>
+                </div>
+                <div id="dentist-email">
+                    <div class="email-section">
+                        <div class="email-label">Subject Line</div>
+                        <div class="email-content">Quick question about [PRACTICE_NAME]'s ad strategy</div>
+                    </div>
+                    <div class="email-section">
+                        <div class="email-label">Body</div>
+                        <div class="email-content">[OWNER_NAME],
+
+I analyzed [PRACTICE_NAME]'s digital footprint this week. You're getting solid traffic, but your Google and Facebook ads are competing with the same 3-4 keywords every other practice in [LOCATION] is using.
+
+Here's the thing: we helped DentalBright go from 12 new patients/month to 47 in 30 days. We did it by flipping their ad strategy to underutilized keywords and local intent signals their competitors weren't targeting.
+
+Curious if this is something worth a 15-minute call? No pitch, just want to see if there's an easy win for you.
+
+[YOUR_NAME]
+[YOUR_TITLE]
+[PHONE/EMAIL]</div>
+                    </div>
+                    <div class="notes">
+                        <strong>Customization Tips:</strong> Research their current Google Ads spend. Mention a specific local competitor if you can. The "easy win" language is low-pressure.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Template 2: Med Spa Niche -->
+            <div class="template-card">
+                <div class="template-header">
+                    <span class="template-name">2. Cold Email — Med Spa Niche</span>
+                    <button class="copy-btn" onclick="copyToClipboard(this, 'medspa-email')">Copy All</button>
+                </div>
+                <div id="medspa-email">
+                    <div class="email-section">
+                        <div class="email-label">Subject Line</div>
+                        <div class="email-content">Before/after ads that actually convert for [SPA_NAME]</div>
+                    </div>
+                    <div class="email-section">
+                        <div class="email-label">Body</div>
+                        <div class="email-content">[OWNER_NAME],
+
+I've been following [SPA_NAME] for a bit. Your Instagram is great, but I noticed your paid ads are using the same 2-3 before/afters on rotation.
+
+Most med spas we work with don't realize their highest-converting ads are the ones most people skip over in their portfolio.
+
+We built an AI system that generates personalized before/after content from your existing photos—literally 100+ variations from one shoot. LuxeMD tripled their treatment bookings in 6 weeks using it.
+
+Would be worth a quick chat to see if this fits your growth plan?
+
+[YOUR_NAME]
+[YOUR_TITLE]
+[PHONE/EMAIL]</div>
+                    </div>
+                    <div class="notes">
+                        <strong>Customization Tips:</strong> Mention a specific service they offer (Botox, fillers, etc.). Reference their Instagram handle to show you've done research.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Template 3: Gym/Fitness Niche -->
+            <div class="template-card">
+                <div class="template-header">
+                    <span class="template-name">3. Cold Email — Gym/Fitness Niche</span>
+                    <button class="copy-btn" onclick="copyToClipboard(this, 'gym-email')">Copy All</button>
+                </div>
+                <div id="gym-email">
+                    <div class="email-section">
+                        <div class="email-label">Subject Line</div>
+                        <div class="email-content">Where are your January members coming from? (Spoiler: not just ads)</div>
+                    </div>
+                    <div class="email-section">
+                        <div class="email-label">Body</div>
+                        <div class="email-content">[OWNER_NAME],
+
+Most gyms know their member acquisition cost, but almost none know which channels are actually filling their classes.
+
+We just helped StrengthCo cut their ad spend by 20% and grow membership by 31% in one quarter—just by tracking which ad angle/audience combo fills which classes at which times.
+
+It's simpler than you'd think, but most gyms never test it.
+
+Want to see how your members break down by source? Happy to run a quick breakdown of your data (if you have it).
+
+[YOUR_NAME]
+[YOUR_TITLE]
+[PHONE/EMAIL]</div>
+                    </div>
+                    <div class="notes">
+                        <strong>Customization Tips:</strong> Mention their specific facility size or class types. Reference seasonal promotions they're running (New Year's resolutions, summer body, etc.).
+                    </div>
+                </div>
+            </div>
+
+            <!-- Template 4: HVAC/Roofing Niche -->
+            <div class="template-card">
+                <div class="template-header">
+                    <span class="template-name">4. Cold Email — HVAC/Roofing Niche</span>
+                    <button class="copy-btn" onclick="copyToClipboard(this, 'hvac-email')">Copy All</button>
+                </div>
+                <div id="hvac-email">
+                    <div class="email-section">
+                        <div class="email-label">Subject Line</div>
+                        <div class="email-content">Your ads are running year-round (but they should shift in [SEASON])</div>
+                    </div>
+                    <div class="email-section">
+                        <div class="email-label">Body</div>
+                        <div class="email-content">[OWNER_NAME],
+
+Most HVAC and roofing companies run the same ad creative and messaging all year. Problem is: homeowner intent shifts dramatically by season.
+
+We helped AceHVAC do seasonal optimization—different angles for AC fixes in summer, heat issues in winter, emergency repairs year-round. They increased their lead quality by 43% and dropped cost-per-lead by $12.
+
+Your [LOCATION] market gets hot/cold swings, which means you have a seasonal pattern to capitalize on.
+
+Worth a 15-minute call to map out your seasonal ad strategy?
+
+[YOUR_NAME]
+[YOUR_TITLE]
+[PHONE/EMAIL]</div>
+                    </div>
+                    <div class="notes">
+                        <strong>Customization Tips:</strong> Reference the current season and upcoming weather patterns for their region. Mention emergency service capability if they offer it.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Template 5: Follow-Up Email -->
+            <div class="template-card">
+                <div class="template-header">
+                    <span class="template-name">5. Follow-Up Email (Universal — After 3 Days)</span>
+                    <button class="copy-btn" onclick="copyToClipboard(this, 'followup-email')">Copy All</button>
+                </div>
+                <div id="followup-email">
+                    <div class="email-section">
+                        <div class="email-label">Subject Line</div>
+                        <div class="email-content">Re: [ORIGINAL_SUBJECT]</div>
+                    </div>
+                    <div class="email-section">
+                        <div class="email-label">Body</div>
+                        <div class="email-content">[OWNER_NAME],
+
+Just a quick follow-up on my email from [DAY]. Totally understand if you're swamped—inbox overload is real.
+
+No pressure at all, but I genuinely think you'd find a 15-minute call worth your time. We've helped 40+ businesses like [PRACTICE_NAME/BUSINESS_TYPE] in [LOCATION] find easy revenue wins.
+
+If this is landing at a bad time, just let me know and I'll circle back in a month.
+
+Otherwise, [CALENDAR_LINK] is easiest.
+
+[YOUR_NAME]</div>
+                    </div>
+                    <div class="notes">
+                        <strong>Best Practices:</strong> Keep it super short. Acknowledge their busy inbox. Provide a calendar link (Calendly, etc.). Don't send more than 2-3 follow-ups total.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LinkedIn DM Scripts Section -->
+        <div class="section">
+            <h2 class="section-title">LinkedIn Connection & DM Scripts</h2>
+            <p style="color: #94a3b8; margin-bottom: 25px; font-size: 14px;">Short, personal messages for connecting with prospects on LinkedIn. High open rate, lower conversion pressure.</p>
+
+            <div class="dm-scripts">
+                <!-- DM Script 1 -->
+                <div class="dm-card">
+                    <div class="dm-number">Connection Request Message</div>
+                    <div class="dm-text">[OWNER_NAME], I follow [BUSINESS_NAME]'s growth on [platform]. Your recent [specific accomplishment/post] impressed me. Curious if you're open to a quick conversation about what's working in [INDUSTRY].</div>
+                    <button class="copy-btn" onclick="copyToClipboard(this, 'dm-script-1')">Copy</button>
+                    <div id="dm-script-1" style="display:none;">[OWNER_NAME], I follow [BUSINESS_NAME]'s growth on [platform]. Your recent [specific accomplishment/post] impressed me. Curious if you're open to a quick conversation about what's working in [INDUSTRY].</div>
+                    <div class="copy-feedback"></div>
+                </div>
+
+                <!-- DM Script 2 -->
+                <div class="dm-card">
+                    <div class="dm-number">Value-First DM (After Connection)</div>
+                    <div class="dm-text">Hey [OWNER_NAME], I noticed you're investing in ads for [NICHE]. Quick thought: most [BUSINESS_TYPE] miss the low-hanging fruit on [SPECIFIC_CHANNEL]. Helped a similar company go from 20 to 60 qualified leads/month. Open to a quick call?</div>
+                    <button class="copy-btn" onclick="copyToClipboard(this, 'dm-script-2')">Copy</button>
+                    <div id="dm-script-2" style="display:none;">Hey [OWNER_NAME], I noticed you're investing in ads for [NICHE]. Quick thought: most [BUSINESS_TYPE] miss the low-hanging fruit on [SPECIFIC_CHANNEL]. Helped a similar company go from 20 to 60 qualified leads/month. Open to a quick call?</div>
+                    <div class="copy-feedback"></div>
+                </div>
+
+                <!-- DM Script 3 -->
+                <div class="dm-card">
+                    <div class="dm-number">Re-engagement DM (If They Viewed Profile)</div>
+                    <div class="dm-text">Hey [OWNER_NAME]—saw you checked out my profile. Figured it's worth a direct message. We help [BUSINESS_TYPE] in [LOCATION] grow their customer base without burning cash on ads. Worth 15 minutes?</div>
+                    <button class="copy-btn" onclick="copyToClipboard(this, 'dm-script-3')">Copy</button>
+                    <div id="dm-script-3" style="display:none;">Hey [OWNER_NAME]—saw you checked out my profile. Figured it's worth a direct message. We help [BUSINESS_TYPE] in [LOCATION] grow their customer base without burning cash on ads. Worth 15 minutes?</div>
+                    <div class="copy-feedback"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategy Notes -->
+        <div class="section">
+            <h2 class="section-title">Outreach Strategy & Sequencing</h2>
+            <div class="notes" style="border-left-color: #06b6d4; padding: 25px;">
+                <p style="margin-bottom: 15px;"><strong style="color: #06b6d4;">Ideal Sequence (7-10 day campaign):</strong></p>
+                <ol style="margin-left: 20px; color: #cbd5e1;">
+                    <li style="margin-bottom: 10px;"><strong>Day 1:</strong> LinkedIn connection request (use connection message template)</li>
+                    <li style="margin-bottom: 10px;"><strong>Day 2:</strong> If connected, send first DM (value-first angle)</li>
+                    <li style="margin-bottom: 10px;"><strong>Day 3:</strong> Cold email (niche-specific template)</li>
+                    <li style="margin-bottom: 10px;"><strong>Day 6:</strong> Follow-up email if no reply</li>
+                    <li style="margin-bottom: 10px;"><strong>Day 10:</strong> Last-touch DM before moving on</li>
+                </ol>
+                <p style="margin-top: 20px; margin-bottom: 15px;"><strong style="color: #06b6d4;">Pro Tips:</strong></p>
+                <ul style="margin-left: 20px;">
+                    <li style="margin-bottom: 8px;">Personalize every message—mention a specific detail about their business (recent post, client type, location).</li>
+                    <li style="margin-bottom: 8px;">Keep subject lines under 50 characters. No ALL CAPS unless it's a question.</li>
+                    <li style="margin-bottom: 8px;">Always lead with a result (number + timeframe: "47 new patients in 30 days").</li>
+                    <li style="margin-bottom: 8px;">Never say "I want to help"—instead say what you've done for similar clients.</li>
+                    <li style="margin-bottom: 8px;">Use [PLACEHOLDER] tags to remind yourself what to customize before sending.</li>
+                    <li style="margin-bottom: 8px;">Send emails Tuesday-Thursday, 9 AM - 2 PM (peak open times for busy owners).</li>
+                    <li style="margin-bottom: 8px;">Track replies in a spreadsheet; if no reply after 3 emails, move to next prospect.</li>
+                </ul>
+                <p style="margin-top: 20px; margin-bottom: 0;"><strong style="color: #06b6d4;">Target Metrics:</strong> Aim for a 15-20% reply rate, 5-8% meeting rate, 1-2% close rate to $3-5K retainer deals.</p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <p>Job 5 — AI Client Acquisition Funnel | Last Updated April 3, 2026</p>
+            <p style="margin-top: 10px;">For use in Lumina Ops Hub. Do not share externally without permission.</p>
+        </footer>
+    </div>
+
+    <script>
+        function copyToClipboard(button, elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.innerText || element.textContent;
+
+            navigator.clipboard.writeText(text).then(() => {
+                const feedback = button.nextElementSibling;
+                if (feedback && feedback.classList.contains('copy-feedback')) {
+                    feedback.textContent = 'Copied!';
+                    feedback.classList.add('show');
+                    setTimeout(() => {
+                        feedback.classList.remove('show');
+                    }, 2000);
+                } else {
+                    button.textContent = 'Copied!';
+                    button.style.backgroundColor = '#10b981';
+                    setTimeout(() => {
+                        button.textContent = 'Copy All';
+                        button.style.backgroundColor = '#06b6d4';
+                    }, 2000);
+                }
+            }).catch(() => {
+                button.textContent = 'Error copying';
+                button.style.backgroundColor = '#ef4444';
+                setTimeout(() => {
+                    button.textContent = 'Copy All';
+                    button.style.backgroundColor = '#06b6d4';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

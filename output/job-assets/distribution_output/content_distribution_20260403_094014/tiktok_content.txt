@@ -1,0 +1,39 @@
+======================================================================
+PLATFORM: TikTok 60-Second Script
+======================================================================
+
+SCRIPT:
+[0-5 seconds] HOOK
+- Show the problem or surprising fact
+- Text on screen: "5 AI-Powered Passive Income Streams..."
+- Upbeat background music
+
+[5-25 seconds] MAIN CONTENT
+- Visual demonstration or explanation
+- Point 1: 5 AI-Powered Passive Income Streams That Actually...
+- Point 2: Explain why it matters
+- Use text overlays for key points
+
+[25-55 seconds] DEEP DIVE
+- Share 2-3 quick tips or insights
+- Use quick cuts and transitions
+- Keep energy high
+
+[55-60 seconds] CTA
+- Call to action: "Like, comment, follow for more insights"
+- Direct to full article in bio
+- End screen with link
+
+MUSIC: Upbeat, trending audio
+HASHTAGS: #insights #learning #strategy #trending
+
+ESTIMATED_DURATION:
+60 seconds
+
+======================================================================
+NOTES:
+  • Review and customize before posting
+  • Ensure links are active and relevant
+  • Adapt tone for platform-specific audience
+  • Include hashtags and mentions where appropriate
+======================================================================

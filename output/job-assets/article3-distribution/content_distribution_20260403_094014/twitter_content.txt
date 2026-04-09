@@ -1,0 +1,27 @@
+======================================================================
+PLATFORM: Twitter Thread (3 tweets)
+======================================================================
+
+TWEET_1_HOOK:
+5 AI-powered passive income streams that actually work in 2026. Earn $500-$5000 monthly with minimal ongoing effort. Complete automation guide.
+
+TWEET_2_KEYPOINT:
+Key insight: Writing a book requires 200+ hours upfront.
+
+TWEET_3_CTA:
+Read more to learn the details!
+
+FULL_THREAD:
+Tweet 1: 5 AI-powered passive income streams that actually work in 2026. Earn $500-$5000 monthly with minimal ongoing effort. Complete automation guide.
+
+Tweet 2: Key insight: Writing a book requires 200+ hours upfront.
+
+Tweet 3: Read more to learn the details!
+
+======================================================================
+NOTES:
+  • Review and customize before posting
+  • Ensure links are active and relevant
+  • Adapt tone for platform-specific audience
+  • Include hashtags and mentions where appropriate
+======================================================================

@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowCRM - Modern Customer Relationship Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            color: #333;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Header & Navigation */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+            padding: 1rem 2rem;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #6366f1 0%, #14b8a6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        nav a {
+            margin-left: 2rem;
+            text-decoration: none;
+            color: #333;
+            font-size: 0.95rem;
+            transition: color 0.3s ease;
+            position: relative;
+        }
+
+        nav a:hover {
+            color: #6366f1;
+        }
+
+        nav a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #6366f1, #14b8a6);
+            transition: width 0.3s ease;
+        }
+
+        nav a:hover::after {
+            width: 100%;
+        }
+
+        .cta-btn {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .cta-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Hero Section */
+        .hero {
+            margin-top: 80px;
+            padding: 6rem 2rem;
+            background: linear-gradient(135deg, #f0f9ff 0%, #f0fdfa 100%);
+            text-align: center;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+            top: -100px;
+            right: -100px;
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .hero::after {
+            content: '';
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(20, 184, 166, 0.1) 0%, transparent 70%);
+            bottom: -50px;
+            left: -50px;
+            border-radius: 50%;
+            animation: float 8s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(30px); }
+        }
+
+        .hero-content {
+            max-width: 700px;
+            z-index: 2;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+            color: #1f2937;
+            font-weight: 800;
+        }
+
+        .hero h1 .gradient-text {
+            background: linear-gradient(135deg, #6366f1 0%, #14b8a6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: #6b7280;
+            margin-bottom: 2rem;
+            line-height: 1.8;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 3rem;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #6366f1;
+            border: 2px solid #6366f1;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-secondary:hover {
+            background: #6366f1;
+            color: white;
+        }
+
+        /* Feature Comparison Table */
+        .comparison {
+            padding: 6rem 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .comparison h2 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+
+        .comparison-subtitle {
+            text-align: center;
+            color: #6b7280;
+            margin-bottom: 4rem;
+            font-size: 1.1rem;
+        }
+
+        .table-wrapper {
+            background: white;
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            padding: 1.5rem;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:nth-child(even) {
+            background: #f9fafb;
+        }
+
+        .check-mark {
+            color: #14b8a6;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .cross-mark {
+            color: #ef4444;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        /* Integrations Section */
+        .integrations {
+            padding: 6rem 2rem;
+            background: #f9fafb;
+        }
+
+        .integrations-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .integrations h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+
+        .integrations p {
+            color: #6b7280;
+            margin-bottom: 3rem;
+            font-size: 1.1rem;
+        }
+
+        .integration-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 2rem;
+            padding: 2rem 0;
+        }
+
+        .integration-item {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-align: center;
+        }
+
+        .integration-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.2);
+        }
+
+        .integration-logo {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .integration-name {
+            font-size: 0.9rem;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        /* Pricing Section */
+        .pricing {
+            padding: 6rem 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .pricing h2 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+
+        .pricing-subtitle {
+            text-align: center;
+            color: #6b7280;
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }
+
+        .toggle-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 3rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 60px;
+            height: 34px;
+            background: #ccc;
+            border-radius: 34px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            border: none;
+        }
+
+        .toggle-switch.active {
+            background: linear-gradient(90deg, #6366f1, #14b8a6);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 26px;
+            height: 26px;
+            background: white;
+            border-radius: 50%;
+            top: 4px;
+            left: 4px;
+            transition: left 0.3s ease;
+        }
+
+        .toggle-switch.active::after {
+            left: 30px;
+        }
+
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 3rem 0;
+        }
+
+        .pricing-card {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 1rem;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .pricing-card.featured {
+            border-color: #6366f1;
+            box-shadow: 0 20px 50px rgba(99, 102, 241, 0.15);
+            transform: scale(1.05);
+        }
+
+        .pricing-card:hover:not(.featured) {
+            border-color: #6366f1;
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.1);
+        }
+
+        .featured-badge {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .plan-name {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #1f2937;
+        }
+
+        .plan-price {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #6366f1;
+            margin-bottom: 0.5rem;
+        }
+
+        .plan-price span {
+            font-size: 1rem;
+            color: #6b7280;
+            font-weight: 400;
+        }
+
+        .plan-description {
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+        }
+
+        .plan-features {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+
+        .plan-features li {
+            padding: 0.5rem 0;
+            color: #4b5563;
+            border-bottom: 1px solid #f3f4f6;
+            padding-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .plan-features li:before {
+            content: '✓';
+            color: #14b8a6;
+            font-weight: bold;
+            margin-right: 0.75rem;
+            font-size: 1.1rem;
+        }
+
+        .plan-features li:last-child {
+            border-bottom: none;
+        }
+
+        .plan-button {
+            width: 100%;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-size: 0.95rem;
+        }
+
+        .pricing-card.featured .plan-button {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+        }
+
+        .pricing-card.featured .plan-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        .pricing-card:not(.featured) .plan-button {
+            background: white;
+            color: #6366f1;
+            border: 2px solid #6366f1;
+        }
+
+        .pricing-card:not(.featured) .plan-button:hover {
+            background: #6366f1;
+            color: white;
+        }
+
+        /* Live Chat Widget Placeholder */
+        .chat-widget {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #6366f1, #14b8a6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+            transition: all 0.3s ease;
+            z-index: 100;
+            color: white;
+            font-size: 2rem;
+        }
+
+        .chat-widget:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 40px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Footer */
+        footer {
+            background: #1f2937;
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-text {
+            margin-bottom: 1rem;
+            color: #d1d5db;
+        }
+
+        .footer-credit {
+            font-size: 0.85rem;
+            color: #9ca3af;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #374151;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .hero p {
+                font-size: 1rem;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+            }
+
+            nav {
+                display: none;
+            }
+
+            header {
+                padding: 1rem;
+            }
+
+            .comparison h2,
+            .integrations h2,
+            .pricing h2 {
+                font-size: 1.75rem;
+            }
+
+            .pricing-card.featured {
+                transform: scale(1);
+            }
+
+            table {
+                font-size: 0.9rem;
+            }
+
+            th, td {
+                padding: 0.75rem;
+            }
+
+            .integration-grid {
+                grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+                gap: 1rem;
+            }
+
+            .chat-widget {
+                width: 60px;
+                height: 60px;
+                font-size: 1.5rem;
+                bottom: 1rem;
+                right: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">FlowCRM</div>
+            <nav>
+                <a href="#features">Features</a>
+                <a href="#integrations">Integrations</a>
+                <a href="#pricing">Pricing</a>
+            </nav>
+            <button class="cta-btn">Get Started Free</button>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Manage Your <span class="gradient-text">Customer Relationships</span> Better</h1>
+            <p>FlowCRM helps teams close deals faster with intelligent customer management, automation, and insights.</p>
+            <div class="hero-buttons">
+                <button class="cta-btn">Start 14-Day Free Trial</button>
+                <button class="btn-secondary">Watch Demo</button>
+            </div>
+            <div style="margin-top: 2rem; color: #6b7280; font-size: 0.95rem;">
+                ✓ No credit card required • ✓ Free setup support • ✓ Cancel anytime
+            </div>
+        </div>
+    </section>
+
+    <!-- Feature Comparison Section -->
+    <section class="comparison" id="features">
+        <h2>Why Teams Choose FlowCRM</h2>
+        <p class="comparison-subtitle">Compare FlowCRM with traditional CRM solutions</p>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Feature</th>
+                        <th>FlowCRM</th>
+                        <th>Salesforce</th>
+                        <th>HubSpot</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>AI-Powered Insights</strong></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="cross-mark">✗</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Workflow Automation</strong></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="check-mark">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Mobile App</strong></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="check-mark">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Custom Reports</strong></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="check-mark">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>API Access</strong></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="check-mark">✓</span></td>
+                        <td><span class="check-mark">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Pricing (Starting)</strong></td>
+                        <td><strong>$49/mo</strong></td>
+                        <td>$155/mo</td>
+                        <td>$50/mo</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Customer Support</strong></td>
+                        <td><span class="check-mark">24/7</span></td>
+                        <td><span class="check-mark">24/7</span></td>
+                        <td><span class="check-mark">24/7</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Integrations Section -->
+    <section class="integrations" id="integrations">
+        <div class="integrations-content">
+            <h2>Integrates With Your Stack</h2>
+            <p>Connect FlowCRM with 500+ apps to automate your entire business</p>
+            <div class="integration-grid">
+                <div class="integration-item">
+                    <div class="integration-logo">📧</div>
+                    <div class="integration-name">Gmail</div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-logo">💬</div>
+                    <div class="integration-name">Slack</div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-logo">📅</div>
+                    <div class="integration-name">Google Calendar</div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-logo">📊</div>
+                    <div class="integration-name">Tableau</div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-logo">💳</div>
+                    <div class="integration-name">Stripe</div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-logo">📝</div>
+                    <div class="integration-name">Zapier</div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-logo">☁️</div>
+                    <div class="integration-name">Dropbox</div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-logo">🔒</div>
+                    <div class="integration-name">OAuth 2.0</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="pricing" id="pricing">
+        <h2>Simple, Transparent Pricing</h2>
+        <p class="pricing-subtitle">Choose the plan that fits your team</p>
+
+        <div class="toggle-container">
+            <span>Monthly</span>
+            <button class="toggle-switch active" onclick="togglePricing()"></button>
+            <span>Annual <span style="color: #14b8a6; font-weight: 600;">(Save 20%)</span></span>
+        </div>
+
+        <div class="pricing-grid">
+            <!-- Starter Plan -->
+            <div class="pricing-card">
+                <div class="plan-name">Starter</div>
+                <div class="plan-price">$49<span>/month</span></div>
+                <div class="plan-description">For individuals and small teams</div>
+                <ul class="plan-features">
+                    <li>Up to 5 users</li>
+                    <li>Unlimited contacts</li>
+                    <li>Email integration</li>
+                    <li>Basic reports</li>
+                    <li>Email support</li>
+                </ul>
+                <button class="plan-button">Get Started</button>
+            </div>
+
+            <!-- Professional Plan (Featured) -->
+            <div class="pricing-card featured">
+                <div class="featured-badge">Most Popular</div>
+                <div class="plan-name">Professional</div>
+                <div class="plan-price">$149<span>/month</span></div>
+                <div class="plan-description">For growing teams</div>
+                <ul class="plan-features">
+                    <li>Up to 25 users</li>
+                    <li>Advanced automation</li>
+                    <li>AI-powered insights</li>
+                    <li>Custom dashboards</li>
+                    <li>Priority support</li>
+                    <li>API access</li>
+                </ul>
+                <button class="plan-button">Start Free Trial</button>
+            </div>
+
+            <!-- Enterprise Plan -->
+            <div class="pricing-card">
+                <div class="plan-name">Enterprise</div>
+                <div class="plan-price">Custom<span>/month</span></div>
+                <div class="plan-description">For large organizations</div>
+                <ul class="plan-features">
+                    <li>Unlimited users</li>
+                    <li>Advanced security</li>
+                    <li>Dedicated account manager</li>
+                    <li>Custom integrations</li>
+                    <li>24/7 phone support</li>
+                    <li>SLA guarantee</li>
+                </ul>
+                <button class="plan-button">Contact Sales</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Live Chat Widget -->
+    <div class="chat-widget" onclick="alert('Live chat feature - Connect your Zendesk, Intercom, or similar service here')">
+        💬
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <p class="footer-text">&copy; 2026 FlowCRM. All rights reserved.</p>
+            <p class="footer-text">
+                <a href="#" style="color: #d1d5db; text-decoration: none; margin-right: 2rem;">Privacy Policy</a>
+                <a href="#" style="color: #d1d5db; text-decoration: none; margin-right: 2rem;">Terms of Service</a>
+                <a href="#" style="color: #d1d5db; text-decoration: none;">Contact Us</a>
+            </p>
+            <p class="footer-credit">Built by Lumina Ops Hub • Professional CRM Landing Pages</p>
+        </div>
+    </footer>
+
+    <script>
+        function togglePricing() {
+            const toggle = document.querySelector('.toggle-switch');
+            toggle.classList.toggle('active');
+
+            const prices = {
+                starter: { monthly: 49, annual: 471.20 },
+                professional: { monthly: 149, annual: 1428.80 },
+                enterprise: { monthly: 'Custom', annual: 'Custom' }
+            };
+
+            const isAnnual = toggle.classList.contains('active');
+            const cards = document.querySelectorAll('.pricing-card');
+
+            cards.forEach((card, index) => {
+                const plans = ['starter', 'professional', 'enterprise'];
+                const plan = plans[index];
+                const priceEl = card.querySelector('.plan-price');
+                const spanEl = priceEl.querySelector('span');
+
+                if (isAnnual) {
+                    priceEl.textContent = typeof prices[plan].annual === 'number' ?
+                        '$' + prices[plan].annual.toFixed(2) : prices[plan].annual;
+                    spanEl.textContent = '/year';
+                } else {
+                    priceEl.textContent = '$' + prices[plan].monthly;
+                    spanEl.textContent = '/month';
+                }
+            });
+        }
+
+        // Smooth scroll for navigation
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

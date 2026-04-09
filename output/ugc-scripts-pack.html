@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UGC Script Pack - Lumina</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+            border-radius: 15px;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 700;
+            color: #6366f1;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .header h1 {
+            font-size: 42px;
+            color: #fff;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .value-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            padding: 10px 25px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 15px;
+        }
+
+        .header p {
+            color: #b0b0b0;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+
+        /* Scripts Container */
+        .scripts-grid {
+            display: grid;
+            gap: 40px;
+            margin-bottom: 60px;
+        }
+
+        /* Individual Script Card */
+        .script-card {
+            background: linear-gradient(135deg, #1a1f3a 0%, #232a48 100%);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 12px;
+            padding: 35px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .script-card:hover {
+            border-color: rgba(99, 102, 241, 0.5);
+            box-shadow: 0 0 30px rgba(99, 102, 241, 0.2);
+            transform: translateY(-5px);
+        }
+
+        .script-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);
+        }
+
+        .script-number {
+            display: inline-block;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .script-title {
+            font-size: 28px;
+            color: #fff;
+            margin-bottom: 5px;
+            font-weight: 700;
+        }
+
+        .script-subtitle {
+            color: #8b5cf6;
+            font-size: 14px;
+            margin-bottom: 25px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Script Sections */
+        .script-section {
+            margin-bottom: 25px;
+        }
+
+        .section-label {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.2);
+            color: #6366f1;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .section-content {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 18px;
+            border-radius: 8px;
+            border-left: 3px solid #6366f1;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        .hook {
+            border-left-color: #ec4899;
+            background: rgba(236, 72, 153, 0.08);
+        }
+
+        .problem {
+            border-left-color: #f59e0b;
+            background: rgba(245, 158, 11, 0.08);
+        }
+
+        .solution {
+            border-left-color: #10b981;
+            background: rgba(16, 185, 129, 0.08);
+        }
+
+        .social-proof {
+            border-left-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.08);
+        }
+
+        .cta {
+            border-left-color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.08);
+        }
+
+        .broll {
+            border-left-color: #06b6d4;
+            background: rgba(6, 182, 212, 0.08);
+        }
+
+        .duration {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 30px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+            border-radius: 12px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            margin-top: 50px;
+        }
+
+        .footer p {
+            color: #b0b0b0;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .footer-brand {
+            color: #6366f1;
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        /* Tips section */
+        .tips-section {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 12px;
+            padding: 25px;
+            margin-top: 50px;
+            margin-bottom: 40px;
+        }
+
+        .tips-title {
+            font-size: 20px;
+            color: #fff;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+
+        .tips-list {
+            list-style: none;
+        }
+
+        .tips-list li {
+            padding: 10px 0;
+            color: #d0d0d0;
+            font-size: 14px;
+            padding-left: 25px;
+            position: relative;
+        }
+
+        .tips-list li:before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #6366f1;
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 32px;
+            }
+
+            .script-title {
+                font-size: 22px;
+            }
+
+            .script-card {
+                padding: 25px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">✦ LUMINA</div>
+            <h1>UGC Script Pack</h1>
+            <p>5 Complete, Ready-to-Film Ad Scripts for Short-Form Video</p>
+            <div class="value-badge">🎬 $375 Value - Professional UGC Scripts</div>
+        </div>
+
+        <!-- Tips Section -->
+        <div class="tips-section">
+            <div class="tips-title">📝 How to Use These Scripts:</div>
+            <ul class="tips-list">
+                <li>Read naturally like you're talking to a friend — don't sound robotic or scripted</li>
+                <li>Adjust the language to fit your personality (these are templates, not gospel)</li>
+                <li>Film in vertical format (9:16) for TikTok/Instagram Reels/Shorts</li>
+                <li>Use the B-roll suggestions as a guide — adapt to what you have available</li>
+                <li>Add subtle cuts and transitions between sections for engagement</li>
+                <li>Include captions/text overlays for accessibility and retention</li>
+                <li>Test different hooks first — that's what drives the CTR</li>
+            </ul>
+        </div>
+
+        <!-- Scripts -->
+        <div class="scripts-grid">
+            <!-- Script 1: AI Side Hustle -->
+            <div class="script-card">
+                <div class="script-number">1</div>
+                <div class="script-title">AI Side Hustle Automation</div>
+                <div class="script-subtitle">Dashboard Tool for Passive Income</div>
+
+                <div class="script-section">
+                    <div class="section-label">Hook (0-3s)</div>
+                    <div class="section-content hook">
+                        "I'm making $2,400 a month while sleeping... and I'm not even good at business. The secret? This dashboard just automates everything for me."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Problem Statement</div>
+                    <div class="section-content problem">
+                        "Most people think side hustles mean more work. Like, you need to be always on, always grinding, tweaking ads, updating inventory... it's exhausting. And like half the stuff you do doesn't even matter."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Solution Reveal</div>
+                    <div class="section-content solution">
+                        "Then I found this tool. It literally does three things: it collects all your revenue from different platforms into one dashboard, it automatically rebalances where you're spending money based on what's actually working, and it sends you these insane reports every morning so you know exactly what made money yesterday. That's it. No manual work."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Social Proof & Results</div>
+                    <div class="section-content social-proof">
+                        "My friend Jake was doing like $900 a month scattered everywhere. Six weeks in, he's hitting $2,100. My girlfriend started using it too and she's literally made back her investment three times over. The craziest part? She checks it for like five minutes a day now instead of three hours."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Call to Action</div>
+                    <div class="section-content cta">
+                        "If you're running multiple income streams and it's killing you, check the link in my bio. They've got a free trial, so just try it. Worst case, you spend 10 minutes and realize it's not for you. Best case? You're sleeping and making money. I'll take those odds."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">B-Roll / Visual Suggestions</div>
+                    <div class="section-content broll">
+                        • Close-up of dashboard showing multiple income streams (Shopify, Etsy, Amazon, etc.)<br>
+                        • Pointing at specific metrics and revenue numbers<br>
+                        • Screen recording of automation in action<br>
+                        • Person checking phone, looking relaxed/happy<br>
+                        • Calendar or clock showing "passive income running 24/7"<br>
+                        • Laptop screen showing reports/analytics<br>
+                        • End screen: Link to tool in bio
+                    </div>
+                </div>
+
+                <div class="duration">⏱️ 25-30 seconds</div>
+            </div>
+
+            <!-- Script 2: Fitness App -->
+            <div class="script-card">
+                <div class="script-number">2</div>
+                <div class="script-title">Fitness App with AI Coaching</div>
+                <div class="script-subtitle">Personal Training in Your Pocket</div>
+
+                <div class="script-section">
+                    <div class="section-label">Hook (0-3s)</div>
+                    <div class="section-content hook">
+                        "I was spending $200 a month on a personal trainer... until I realized I had a better one in my phone the whole time."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Problem Statement</div>
+                    <div class="section-content problem">
+                        "The thing about PTs is they're expensive and you only see them a couple times a week, right? So the rest of the time you're guessing. You don't know if your form is right, if you're hitting the right muscle groups, if your routine even makes sense. And you end up doing the same stuff because you're scared to try anything new."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Solution Reveal</div>
+                    <div class="section-content solution">
+                        "This app uses AI to like... watch you work out. You film yourself, and it tells you if your form is wrong before you hurt yourself. It builds custom routines based on your actual fitness level, your injuries, what you like. And get this — it adjusts every single week based on your progress. It's like having a coach who's literally always with you."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Social Proof & Results</div>
+                    <div class="section-content social-proof">
+                        "I've been using it for three months and I'm actually seeing results. Like, real results. I'm stronger, my form is actually correct for the first time, and I'm not bored because every workout is different. My mom — who's like 59 — uses it too and she's doing things she thought she'd never do again."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Call to Action</div>
+                    <div class="section-content cta">
+                        "If you're tired of guessing and dropping $200 on trainers you only see twice a week, try this. First week is free. If it doesn't change how you work out, you didn't lose anything. Link below."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">B-Roll / Visual Suggestions</div>
+                    <div class="section-content broll">
+                        • Person filming themselves doing a workout<br>
+                        • Phone screen showing AI form analysis (green checkmarks on proper form)<br>
+                        • Workout app interface with custom routine displayed<br>
+                        • Before/after transformation clips (subtle, nothing too extreme)<br>
+                        • Coach giving feedback on form in real-time<br>
+                        • Person looking confident, executing proper form<br>
+                        • Weekly progress reports on screen
+                    </div>
+                </div>
+
+                <div class="duration">⏱️ 20-25 seconds</div>
+            </div>
+
+            <!-- Script 3: Crypto Portfolio -->
+            <div class="script-card">
+                <div class="script-number">3</div>
+                <div class="script-title">Crypto Portfolio Tracker</div>
+                <div class="script-subtitle">Never Miss a Trade Again</div>
+
+                <div class="script-section">
+                    <div class="section-label">Hook (0-3s)</div>
+                    <div class="section-content hook">
+                        "I used to check seven different apps to track my crypto. Last week I made a trade on the wrong exchange and lost $800. That's when I realized I needed to be smarter about this."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Problem Statement</div>
+                    <div class="section-content problem">
+                        "Here's the thing about crypto: you've got coins on Coinbase, some on Kraken, maybe some on a dex... and your money is literally everywhere. So you're constantly switching between apps, losing track of your overall position, missing exit points because you forgot you even owned something. And taxes? Forget about it — good luck calculating that."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Solution Reveal</div>
+                    <div class="section-content solution">
+                        "This tool connects to all your exchanges at once. Not your passwords — it's safe, it just imports your data. It shows you your entire portfolio on one screen. You see exactly what you own, what it's worth, your entry price, your gain or loss, all in one place. And when prices hit your targets, it sends you alerts instead of you obsessively checking every hour."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Social Proof & Results</div>
+                    <div class="section-content social-proof">
+                        "Since I started using this, I've actually taken profits when I planned to instead of panic selling or holding too long. My friend Marcus — hardcore crypto guy — said it saved him literally thousands by keeping him from making emotional trades. And the tax reports? Chef's kiss. He just gives that to his accountant."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Call to Action</div>
+                    <div class="section-content cta">
+                        "If you're juggling multiple exchanges and probably leaving money on the table, just try this. Takes like two minutes to set up. Your future self will thank you. Link in bio."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">B-Roll / Visual Suggestions</div>
+                    <div class="section-content broll">
+                        • Rapid screen switching between Coinbase, Kraken, FTX (showing frustration)<br>
+                        • App opening with unified portfolio view<br>
+                        • Portfolio dashboard showing all holdings in one place<br>
+                        • Price alert notifications popping up<br>
+                        • Trading decision being made calmly<br>
+                        • Profit being taken at target price<br>
+                        • Tax report being generated and downloaded<br>
+                        • Person looking relieved/satisfied
+                    </div>
+                </div>
+
+                <div class="duration">⏱️ 25-28 seconds</div>
+            </div>
+
+            <!-- Script 4: Freelancer Invoicing -->
+            <div class="script-card">
+                <div class="script-number">4</div>
+                <div class="script-title">Freelancer Invoicing Tool</div>
+                <div class="script-subtitle">Get Paid Faster, Chase Less</div>
+
+                <div class="script-section">
+                    <div class="section-label">Hook (0-3s)</div>
+                    <div class="section-content hook">
+                        "I was owed $4,200 from clients for like six weeks. Then I realized my invoices were literally getting lost in their inboxes. That's when I switched to this."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Problem Statement</div>
+                    <div class="section-content problem">
+                        "As a freelancer, you do amazing work, but then payment becomes this whole awkward thing. You send an invoice as a PDF, it probably gets buried, they forget, and now you're a month out sending awkward payment reminder emails. Some people never even see your invoice. It's unprofessional and it kills your cash flow."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Solution Reveal</div>
+                    <div class="section-content solution">
+                        "This tool creates invoices that are like... actually beautiful. Branded with your stuff. The client gets a link, they can see it on their phone, and — here's the kicker — they can pay you directly from the invoice. No transferring to their bank app, no typing in account numbers. Click 'Pay Now' and boom, you're paid. It automatically reminds them if they don't pay, and you can see exactly when they opened it."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Social Proof & Results</div>
+                    <div class="section-content social-proof">
+                        "My payment time dropped from like 30 days to an average of 7 days. No joke. People pay faster when they don't have to do extra steps. I've had clients literally say 'wow this is actually professional' — which feels good, you know? And I'm not sending awkward reminder emails anymore because the system does it."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Call to Action</div>
+                    <div class="section-content cta">
+                        "If you're waiting weeks to get paid for your work, this is literally the fix. It's cheap, it makes you look legit, and you'll get paid faster. Try it free for your next invoice. Link in my bio."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">B-Roll / Visual Suggestions</div>
+                    <div class="section-content broll">
+                        • Sending a regular PDF invoice (dull, outdated)<br>
+                        • Client not paying, sending awkward reminder<br>
+                        • New beautiful invoice template opening<br>
+                        • Branding elements being applied<br>
+                        • Invoice link being sent to client<br>
+                        • Client receiving and opening on mobile<br>
+                        • Payment being made with one click<br>
+                        • Notification showing payment received<br>
+                        • Person checking bank account, looking satisfied
+                    </div>
+                </div>
+
+                <div class="duration">⏱️ 22-26 seconds</div>
+            </div>
+
+            <!-- Script 5: SEO Content Writer -->
+            <div class="script-card">
+                <div class="script-number">5</div>
+                <div class="script-title">AI-Powered SEO Content Writer</div>
+                <div class="script-subtitle">Rank on Google Without the Guesswork</div>
+
+                <div class="script-section">
+                    <div class="section-label">Hook (0-3s)</div>
+                    <div class="section-content hook">
+                        "I spent $500 on an SEO tool and still had no idea what to write about. Turns out I was searching all wrong. Now I use this instead and my blog gets 10x more traffic."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Problem Statement</div>
+                    <div class="section-content problem">
+                        "The problem with content creation is you're basically guessing what people actually want to read. You spend two hours writing something, optimize the crap out of it, and then... nobody finds it. Or you find the right keyword but your content isn't good enough to rank. You need like three different tools to figure out what to write, how to optimize it, and whether it's even worth your time."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Solution Reveal</div>
+                    <div class="section-content solution">
+                        "This tool finds keywords that actually have search volume and low competition. Like, you give it your niche, and it shows you what people are literally searching for. Then the AI writes an article outline that's already optimized for that keyword. You literally just flesh it out, and it's ready to rank. The best part? It shows you what you need to beat in the SERPs so you know if it's even worth publishing."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Social Proof & Results</div>
+                    <div class="section-content social-proof">
+                        "I wrote one article with this in like an hour and a half — normally that takes me four hours easy. It ranked for the main keyword in like three weeks, and now it brings me like 200 visitors a month. That's traffic I didn't have before. My content is better because I'm actually writing about what people search for, not what I think they want."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">Call to Action</div>
+                    <div class="section-content cta">
+                        "If you're writing content that nobody reads, you're doing research wrong. Try this for your next three articles. You'll either see a massive difference, or you'll at least know you're not wasting time on random topics. Link below — they've got a free trial."
+                    </div>
+                </div>
+
+                <div class="script-section">
+                    <div class="section-label">B-Roll / Visual Suggestions</div>
+                    <div class="section-content broll">
+                        • Blank Google Doc, person staring at it confused<br>
+                        • Searching randomly for keywords (showing frustration)<br>
+                        • Tool interface opening with keyword research dashboard<br>
+                        • Keyword metrics being revealed (search volume, difficulty)<br>
+                        • AI outline being generated<br>
+                        • Person quickly writing/editing content<br>
+                        • Article being published<br>
+                        • Google Search Console showing ranking position<br>
+                        • Traffic analytics going up<br>
+                        • Person looking proud at published content
+                    </div>
+                </div>
+
+                <div class="duration">⏱️ 25-30 seconds</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>Created by <span class="footer-brand">✦ LUMINA</span> — Professional UGC Scripts & Creative Services</p>
+            <p style="font-size: 12px; color: #888; margin-top: 15px;">These scripts are templates. Modify language, pacing, and details to match your brand voice and visual assets. Best results when delivered authentically.</p>
+        </div>
+    </div>
+</body>
+</html>

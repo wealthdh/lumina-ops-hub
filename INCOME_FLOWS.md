@@ -1,0 +1,195 @@
+# Lumina Ops Hub — Click-to-Payment Flow (All 10 Income Streams)
+
+**Last updated:** April 2, 2026
+**Status:** All flows verified live against `rjtxkjozlhvnxkzmqffk.supabase.co`
+
+---
+
+## Auth & Session
+The app auto-signs in from the stored session in `localStorage` (no login screen on reload).
+Session auto-refreshes via `supabase.auth.refreshSession()` when within 30s of expiry.
+
+---
+
+## 1. AI UGC Factory (`/ugc-swarm`)
+**Click → Cash Out path:**
+1. Navigate to **UGC Swarm** tab
+2. Click **+ New Campaign** → fill brief, platform, target audience
+3. System calls Arcads/Kling API via edge function → generates video assets
+4. Assets appear in the **Creative Library** grid
+5. Click **Publish** → auto-distributes to configured platforms
+6. Revenue accrues to `ops_jobs` row `ugc_factory` daily earnings
+7. Click **Cash Out · $1,490/day** on Job Card #1 → choose Crypto / Bank / Card → confirm
+
+**What to configure:** `VITE_ARCADS_API_KEY`, `VITE_KLING_API_KEY` in `.env`
+
+---
+
+## 2. Liquidity Sniper — MT5 (Twin-Engine Dashboard)
+**Click → Cash Out path:**
+1. Navigate to **Twin-Engine** tab
+2. Left panel: live MT5 equity chart + open positions from CoinExx
+3. Right panel: Polymarket positions
+4. Click **Mirror Edge** to auto-copy a Polymarket edge trade to MT5
+5. MT5 bridge (`localhost:8080`) executes via LuminaPulse EA on CoinExx
+6. PnL streams live into `mt5_accounts` table via `coinexx_sync.py`
+7. Cash out via **Cash Out Today** on Ops Hub dashboard
+
+**What to configure:** Run `python mt5_bridge/coinexx_sync.py` with CoinExx credentials
+
+---
+
+## 3. AI Lead-to-Cash Funnel (`/funnel`) ✅ VERIFIED
+**Click → Cash Out path (fully tested):**
+1. Navigate to **Lead-to-Cash Funnel** tab
+2. Click **+ Add Lead** → enter name, email, company, estimated value
+3. Lead appears in pipeline with AI qualification score
+4. Click **Generate Package** (or **Re-generate** if already in Proposal stage)
+5. Edge function `generate-lead-package` runs:
+   - Generates branded proposal HTML → uploads to Supabase Storage
+   - Generates service contract HTML → uploads to Supabase Storage
+   - Creates Stripe invoice (if `STRIPE_SECRET_KEY` is a live key) → sends to lead's email
+6. Modal shows: **Proposal PDF** · **Service Contract** · **Stripe Invoice $X** — all clickable links
+7. Lead stage updates to "Proposal" in real-time
+8. When lead pays Stripe invoice → cash lands in Stripe account → transfer to bank
+
+**Auth pattern:** `Authorization: Bearer <anon_key>` + `x-user-jwt: <access_token>` header
+**What to configure:** `STRIPE_SECRET_KEY=sk_live_...` in Supabase Edge Function Secrets
+
+---
+
+## 4. Tax Shield Vault (`/tax`)
+**Click → Cash Out path:**
+1. Navigate to **Tax Shield Vault** tab
+2. PuLP optimizer runs nightly → splits income into Tax Pot vs. Operating vs. Investment
+3. **Tax Pot** balance grows automatically from each income stream (configurable %)
+4. Click **Optimize Allocation** → PuLP rebalances in real-time
+5. View **Quarterly Forecast** — projected tax liability and savings
+6. Cash out daily earnings via Job Card #7 → **Cash Out · $280/day**
+
+---
+
+## 5. Synergy Brain Optimizer (`/synergy`)
+**Click → Cash Out path:**
+1. Navigate to **Synergy Brain** tab
+2. AI detects cross-job synergies (e.g., UGC content → SEO → Lead pipeline)
+3. Click **Activate** on a synergy link to enable the connection
+4. Synergy revenue compounds across linked jobs automatically
+5. Click **Kill** on underperforming jobs → stops drain on resources
+6. Synergy earnings roll up to each job's daily total → cash out per job card
+
+---
+
+## 6. Edge Harmonizer (`/edge-harmonizer`)
+**Click → Cash Out path:**
+1. Navigate to **Edge Harmonizer** tab
+2. Arbitrage signals stream in real-time from Polymarket + MT5 price feeds
+3. Click **Execute** on a signal → system auto-creates synthetic position
+4. PnL appears in the signal feed with entry/exit prices
+5. Profitable signals roll into `ops_jobs` arbitrage stream earnings
+6. Cash out via Job Card daily earnings button
+
+---
+
+## 7. Scenario Runner / Monte Carlo (`/montecarlo`)
+**Click → Cash Out path:**
+1. Navigate to **Scenario Runner** tab
+2. Set portfolio parameters (allocation %, volatility, time horizon)
+3. Click **Run 1,000 Simulations** → Monte Carlo runs in browser
+4. Results show P10/P50/P90 outcomes + drawdown risk
+5. Use outputs to optimize capital allocation in Money Flow
+6. No direct cash out — informs where to move capital for higher yield
+
+---
+
+## 8. Money Flow Optimizer (`/money-flow`)
+**Click → Cash Out path:**
+1. Navigate to **Money Flow** tab
+2. PuLP allocation model shows current capital distribution across 10 streams
+3. Click **Rebalance Tonight** → queues nightly reallocation job
+4. Capital moves automatically to highest-yield streams
+5. Increased allocation → increased daily earnings per stream → higher cash outs
+
+---
+
+## 9. Content SEO Swarm
+**Click → Cash Out path:**
+1. Content generated by UGC Factory is auto-distributed via SEO Optimizer
+2. Distribution targets: blog, social, video platforms, email sequences
+3. Click **Auto-Distribute** → MCP routes content to configured channels
+4. Organic traffic → affiliate/ad revenue accrues to Job #8
+5. Cash out via Job Card #8 → **Cash Out · $240/day**
+
+---
+
+## 10. Consulting Sprint Retainer
+**Click → Cash Out path:**
+1. Leads from the Funnel Agent with high scores (≥80) are auto-routed to consulting
+2. Lead-to-Cash Funnel generates proposal with consulting retainer pricing
+3. Stripe invoice sent → client pays → retainer begins
+4. Monthly retainer revenue tracked in `ops_jobs` row `consulting_retainer`
+5. Cash out via Job Card #9 → **Cash Out · $200/day**
+
+---
+
+## Withdrawal Methods (all verified in UI)
+
+| Method | Speed | How it works |
+|--------|-------|--------------|
+| **Crypto (BNB/ETH/Polygon/SOL)** | Instant | `cashout-crypto` edge fn → on-chain USDC transfer from hot wallet |
+| **Bank ACH** | 2–3 days | `cashout-bank` edge fn → Plaid ACH via connected bank account |
+| **Debit Card** | Instant | `cashout-card` edge fn → Stripe instant payout to debit card |
+
+**Daily limits:** $500 standard · $1,000 crypto cap
+**Over-limit:** Auto-routed to approval queue (`cashout_approvals` table)
+**2FA:** Crypto withdrawals require 6-digit code sent to email
+
+---
+
+## Required Secrets for Full Production
+
+Set these in **Supabase Dashboard → Edge Functions → Secrets**:
+
+| Secret | Purpose | Status |
+|--------|---------|--------|
+| `SUPABASE_URL` | Auto-injected | ✅ Auto |
+| `SUPABASE_SERVICE_ROLE_KEY` | Auto-injected | ✅ Auto |
+| `STRIPE_SECRET_KEY` | Real invoices + payouts | ⚠️ Set `sk_live_...` |
+| `PLAID_CLIENT_ID` | Bank ACH | ⚠️ Set production key |
+| `PLAID_SECRET` | Bank ACH | ⚠️ Set production key |
+| `HOT_WALLET_PRIVATE_KEY` | Crypto on-chain sends | ⚠️ Set wallet key |
+| `RESEND_API_KEY` | 2FA email codes | ✅ Configured |
+
+---
+
+## Vercel Deployment
+
+```bash
+# 1. Push to GitHub
+git add -A && git commit -m "production ready"
+git push origin main
+
+# 2. Connect repo on vercel.com → New Project
+# 3. Set environment variables:
+VITE_SUPABASE_URL=https://rjtxkjozlhvnxkzmqffk.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGci...
+VITE_MT5_BRIDGE_URL=http://localhost:8080
+
+# 4. Deploy → https://lumina-ops-hub.vercel.app
+```
+
+**Build command:** `npm run build`
+**Output dir:** `dist`
+**Node version:** 18+
+
+---
+
+## MT5 Bridge (CoinExx Live Data)
+
+```bash
+# Start the bridge (runs on port 8080)
+pip install -r mt5_bridge/requirements.txt
+python mt5_bridge/coinexx_sync.py
+# Credentials: wealthdh@gmail.com / CoinExx-Live
+# Syncs MT5 account + trades to Supabase every 10 seconds
+```

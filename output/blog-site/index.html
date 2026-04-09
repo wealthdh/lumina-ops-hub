@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Lumina Pulse Insights - AI trading strategies, prediction markets, and passive income automation for 2026. Expert guides for cryptocurrency and algorithmic trading.">
+    <meta name="keywords" content="AI trading, crypto trading strategies, passive income, prediction markets, algorithmic trading">
+    <meta name="author" content="Lumina Pulse">
+    <meta name="robots" content="index, follow">
+    <meta name="canonical" href="https://yourdomain.com/">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Lumina Pulse Insights - AI Trading & Passive Income Strategies">
+    <meta property="og:description" content="Master AI trading bots, prediction markets, and automated income streams with expert guides for 2026">
+    <meta property="og:url" content="https://yourdomain.com/">
+    <meta property="og:image" content="https://yourdomain.com/og-image.png">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Lumina Pulse Insights - AI Trading & Passive Income">
+    <meta name="twitter:description" content="Expert guides on AI trading, prediction markets, and passive income automation">
+    <meta name="twitter:image" content="https://yourdomain.com/og-image.png">
+
+    <!-- Schema.org -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Lumina Pulse Insights",
+        "url": "https://yourdomain.com/",
+        "description": "AI trading strategies and passive income automation guides",
+        "publisher": {
+            "@type": "Organization",
+            "name": "Lumina Pulse",
+            "logo": "https://yourdomain.com/logo.png"
+        }
+    }
+    </script>
+
+    <title>Lumina Pulse Insights - AI Trading & Passive Income Strategies</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+
+        header {
+            background: rgba(15, 23, 42, 0.95);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            padding: 1rem 0;
+        }
+
+        .header-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #06b6d4, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-decoration: none;
+        }
+
+        nav a {
+            color: #cbd5e1;
+            text-decoration: none;
+            margin-left: 2rem;
+            transition: color 0.3s;
+            font-size: 0.95rem;
+        }
+
+        nav a:hover {
+            color: #06b6d4;
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+
+        .hero {
+            padding: 4rem 0;
+            text-align: center;
+            background: linear-gradient(180deg, rgba(6, 182, 212, 0.1) 0%, transparent 100%);
+            border-radius: 1rem;
+            margin: 2rem 0;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #06b6d4, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 800;
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            color: #cbd5e1;
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .newsletter-form {
+            display: flex;
+            gap: 0.5rem;
+            max-width: 500px;
+            margin: 0 auto 2rem;
+        }
+
+        .newsletter-form input {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 0.5rem;
+            color: #e2e8f0;
+            font-size: 1rem;
+        }
+
+        .newsletter-form input::placeholder {
+            color: rgba(203, 213, 225, 0.5);
+        }
+
+        .newsletter-form button {
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #06b6d4, #3b82f6);
+            border: none;
+            border-radius: 0.5rem;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .newsletter-form button:hover {
+            transform: translateY(-2px);
+        }
+
+        /* AdSense Placeholder */
+        .ad-slot {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px dashed rgba(148, 163, 184, 0.3);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin: 2rem 0;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+
+        .articles {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 2rem;
+            margin: 3rem 0;
+        }
+
+        .article-card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 0.75rem;
+            padding: 2rem;
+            transition: all 0.3s;
+            overflow: hidden;
+        }
+
+        .article-card:hover {
+            border-color: rgba(6, 182, 212, 0.3);
+            transform: translateY(-4px);
+            background: rgba(30, 41, 59, 0.8);
+        }
+
+        .article-meta {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .article-category {
+            background: rgba(6, 182, 212, 0.1);
+            color: #06b6d4;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            font-weight: 600;
+        }
+
+        .article-card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #f1f5f9;
+        }
+
+        .article-card p {
+            color: #cbd5e1;
+            margin-bottom: 1.5rem;
+        }
+
+        .article-card a {
+            display: inline-block;
+            color: #06b6d4;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s;
+        }
+
+        .article-card a:hover {
+            color: #3b82f6;
+        }
+
+        footer {
+            background: rgba(15, 23, 42, 0.95);
+            border-top: 1px solid rgba(148, 163, 184, 0.1);
+            margin-top: 4rem;
+            padding: 2rem 0;
+            color: #94a3b8;
+            text-align: center;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+
+        .footer-links {
+            margin-bottom: 1.5rem;
+        }
+
+        .footer-links a {
+            color: #94a3b8;
+            text-decoration: none;
+            margin: 0 1rem;
+            transition: color 0.3s;
+        }
+
+        .footer-links a:hover {
+            color: #06b6d4;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .newsletter-form {
+                flex-direction: column;
+            }
+
+            nav {
+                display: none;
+            }
+
+            .articles {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-container">
+            <a href="/" class="logo">Lumina Pulse Insights</a>
+            <nav>
+                <a href="/">Home</a>
+                <a href="#articles">Articles</a>
+                <a href="#newsletter">Newsletter</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <h1>Master AI Trading & Passive Income</h1>
+            <p>Expert guides on AI trading bots, prediction markets, and automated income streams for 2026</p>
+            <form class="newsletter-form">
+                <input type="email" placeholder="Enter your email" required>
+                <button type="submit">Subscribe</button>
+            </form>
+            <p style="font-size: 0.85rem;">Join 10,000+ traders getting weekly strategies</p>
+        </section>
+
+        <div class="ad-slot">
+            <!-- AdSense Ad Slot #1 -->
+            <ins class="adsbygoogle"
+                 style="display:inline-block;width:728px;height:90px"
+                 data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+                 data-ad-slot="XXXXXXXXXX"></ins>
+        </div>
+
+        <section id="articles">
+            <h2 style="font-size: 2rem; margin-bottom: 2rem; text-align: center;">Latest Articles</h2>
+            <div class="articles">
+                <article class="article-card">
+                    <div class="article-meta">
+                        <span class="article-category">Trading</span>
+                        <span>8 min read</span>
+                    </div>
+                    <h2>AI Trading Bots in 2026: Complete Guide</h2>
+                    <p>Master algorithmic trading with AI bots. Learn how professional traders are earning 15-30% monthly returns with minimal effort.</p>
+                    <a href="articles/ai-trading-bots-2026.html">Read Article →</a>
+                </article>
+
+                <article class="article-card">
+                    <div class="article-meta">
+                        <span class="article-category">Markets</span>
+                        <span>10 min read</span>
+                    </div>
+                    <h2>Polymarket Trading Guide 2026</h2>
+                    <p>How to profit from prediction markets. Complete step-by-step strategies for trading political, sports, and financial event predictions.</p>
+                    <a href="articles/polymarket-prediction-markets-guide.html">Read Article →</a>
+                </article>
+
+                <article class="article-card">
+                    <div class="article-meta">
+                        <span class="article-category">Passive Income</span>
+                        <span>12 min read</span>
+                    </div>
+                    <h2>5 AI-Powered Passive Income Streams</h2>
+                    <p>Build truly passive income with AI automation. Discover 5 proven methods to earn $500-$5,000 monthly with minimal ongoing work.</p>
+                    <a href="articles/passive-income-automation-2026.html">Read Article →</a>
+                </article>
+
+                <article class="article-card">
+                    <div class="article-meta">
+                        <span class="article-category">Trading</span>
+                        <span>10 min read</span>
+                    </div>
+                    <h2>Polymarket Edge-Entry Strategies 2026</h2>
+                    <p>How a trader turned $5 into $5.5M using automated scripts. The edge-entry method: buy contracts at 10¢ with AI confidence scoring.</p>
+                    <a href="articles/polymarket-edge-entry-strategies-2026.html">Read Article →</a>
+                </article>
+            </div>
+        </section>
+
+        <div class="ad-slot">
+            <!-- AdSense Ad Slot #2 -->
+            <ins class="adsbygoogle"
+                 style="display:inline-block;width:728px;height:90px"
+                 data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+                 data-ad-slot="XXXXXXXXXX"></ins>
+        </div>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-links">
+                <a href="/">Home</a>
+                <a href="#articles">Articles</a>
+                <a href="/about">About</a>
+                <a href="/privacy">Privacy</a>
+            </div>
+            <p>&copy; 2026 Lumina Pulse Insights. All rights reserved.</p>
+            <p style="font-size: 0.8rem; margin-top: 0.5rem;">Written by Lumina Pulse | Disclaimer: Not financial advice.</p>
+        </div>
+    </footer>
+
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"></script>
+    <script>
+        (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
+</body>
+</html>
