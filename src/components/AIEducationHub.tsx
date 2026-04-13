@@ -420,7 +420,7 @@ export default function AIEducationHub() {
         </section>
 
         {/* ── ALL COURSES GRID ───────────────────────────────────────────────*/}
-        <section>
+        <section data-courses-section>
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-lumina-text mb-4 flex items-center gap-2">
               <Cpu size={24} className="text-lumina-success" />
@@ -479,8 +479,19 @@ export default function AIEducationHub() {
             Start with any course today. Each skill you master opens new income opportunities. Track
             your progress, join our community, and accelerate your earnings potential.
           </p>
-          <button className="px-6 py-3 bg-gradient-to-r from-lumina-pulse to-lumina-gold text-lumina-bg rounded-lg font-bold hover:shadow-lg hover:shadow-lumina-pulse/30 transition">
-            Begin Your Journey
+          <button
+            onClick={() => {
+              if (COURSES.length === 0) {
+                alert('Courses coming soon. Configure the courses table in Supabase to get started.')
+              } else {
+                // Scroll to courses section
+                const coursesSection = document.querySelector('[data-courses-section]')
+                coursesSection?.scrollIntoView({ behavior: 'smooth' })
+              }
+            }}
+            className="px-6 py-3 bg-gradient-to-r from-lumina-pulse to-lumina-gold text-lumina-bg rounded-lg font-bold hover:shadow-lg hover:shadow-lumina-pulse/30 transition"
+          >
+            {COURSES.length > 0 ? 'Begin Your Journey' : 'View Courses'}
           </button>
         </div>
       </div>

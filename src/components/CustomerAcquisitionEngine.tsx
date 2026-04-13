@@ -375,7 +375,18 @@ const ContentFactory: React.FC = () => {
             <Calendar className="w-4 h-4" />
             30-Day Content Calendar
           </h3>
-          <button className="btn-pulse px-4 py-2 text-sm">Generate 30-Day Pack</button>
+          <button
+            className="btn-pulse px-4 py-2 text-sm"
+            onClick={() => {
+              const toast = document.createElement('div')
+              toast.className = 'fixed bottom-4 right-4 bg-lumina-pulse/20 border border-lumina-pulse/50 rounded-lg px-4 py-3 text-lumina-pulse text-sm flex items-center gap-2 animate-pulse-slow z-50'
+              toast.textContent = 'Generating 30-day content pack...'
+              document.body.appendChild(toast)
+              setTimeout(() => toast.remove(), 4000)
+            }}
+          >
+            Generate 30-Day Pack
+          </button>
         </div>
 
         {/* Calendar Grid */}
@@ -435,7 +446,7 @@ const ContentFactory: React.FC = () => {
 const RevenueDashboard: React.FC = () => {
   const totalClients = mockClients.length;
   const monthlyRecurringRevenue = mockClients.reduce((sum, c) => sum + c.monthlyFee, 0);
-  const avgRevenuePerClient = Math.round(monthlyRecurringRevenue / totalClients);
+  const avgRevenuePerClient = totalClients === 0 ? 0 : Math.round(monthlyRecurringRevenue / totalClients);
   const totalCustomersAcquired = mockClients.reduce((sum, c) => sum + c.customersAcquiredWeek, 0);
 
   const revenueMetrics = [

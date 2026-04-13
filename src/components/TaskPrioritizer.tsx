@@ -2,8 +2,8 @@
  * Smart Task Prioritizer + Auto-Delegate
  * Pulls tasks from auto_tasks via the useJobs hook (which joins auto_tasks).
  */
-import { useState } from 'react'
-import { CheckSquare, Cpu, Clock, ChevronDown, ChevronUp, Loader } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { CheckSquare, Cpu, Clock, ChevronDown, ChevronUp, Loader, CheckCircle } from 'lucide-react'
 import { useJobs } from '../hooks/useJobs'
 import type { AutoTask } from '../lib/types'
 import clsx from 'clsx'
@@ -20,6 +20,15 @@ export default function TaskPrioritizer() {
   const { data: jobs = [], isLoading } = useJobs()
   const [expanded,  setExpanded]  = useState(false)
   const [delegated, setDelegated] = useState<Set<string>>(new Set())
+  const [delegationFeedback, setDelegationFeedback] = useState<string | null>(null)
+
+  // Auto-hide feedback after 4 seconds
+  useEffect(() => {
+    if (delegationFeedback) {
+      const timer = setTimeout(() => setDelegationFeedback(null), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [delegationFeedback])
 
   const allTasks: (AutoTask & { jobName: string })[] = jobs.flatMap((j) =>
     j.tasks.map((t) => ({ ...t, jobName: j.name }))
@@ -68,11 +77,26 @@ export default function TaskPrioritizer() {
           onClick={() => {
             const ids = sorted.filter((t) => t.status !== 'done').map((t) => t.id)
             setDelegated(new Set(ids))
+            setDelegationFeedback(`${ids.length} task${ids.length !== 1 ? 's' : ''} delegated to AI`)
           }}
-          className="text-xs text-lumina-dim hover:text-lumina-pulse transition-colors flex items-center gap-1"
+          className={clsx(
+            'text-xs transition-colors flex items-center gap-1',
+            delegationFeedback
+              ? 'text-lumina-success'
+              : 'text-lumina-dim hover:text-lumina-pulse'
+          )}
         >
-          <Cpu size={11} />
-          Delegate All to AI
+          {delegationFeedback ? (
+            <>
+              <CheckCircle size={11} />
+              {delegationFeedback}
+            </>
+          ) : (
+            <>
+              <Cpu size={11} />
+              Delegate All to AI
+            </>
+          )}
         </button>
       </div>
 

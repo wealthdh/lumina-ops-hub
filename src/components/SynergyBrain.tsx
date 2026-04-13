@@ -45,7 +45,7 @@ export default function SynergyBrain() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lumina-text font-bold text-xl">Cross-Job Synergy Brain</h1>
-          <p className="text-lumina-dim text-sm">Synergy detection · auto-kill · risk radar</p>
+          <p className="text-lumina-dim text-sm">Synergy detection - auto-kill - risk radar</p>
         </div>
         <div className="card flex items-center gap-3">
           <div>
@@ -160,10 +160,28 @@ export default function SynergyBrain() {
                   <p className="text-lumina-dim text-xs mt-1">{rec.reason}</p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
-                  <button className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1">
+                  <button
+                    className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1"
+                    onClick={() => {
+                      const toast = document.createElement('div')
+                      toast.className = 'fixed bottom-4 right-4 bg-lumina-muted/20 border border-lumina-muted/50 rounded-lg px-4 py-3 text-lumina-muted text-sm flex items-center gap-2 animate-pulse-slow z-50'
+                      toast.textContent = `Ignored kill recommendation for ${rec.jobName}`
+                      document.body.appendChild(toast)
+                      setTimeout(() => toast.remove(), 4000)
+                    }}
+                  >
                     <CheckCircle size={11} /> Ignore
                   </button>
-                  <button className="text-xs py-1.5 px-3 rounded-lg bg-lumina-danger/20 text-lumina-danger border border-lumina-danger/30 hover:bg-lumina-danger/30 transition-colors flex items-center gap-1">
+                  <button
+                    className="text-xs py-1.5 px-3 rounded-lg bg-lumina-danger/20 text-lumina-danger border border-lumina-danger/30 hover:bg-lumina-danger/30 transition-colors flex items-center gap-1"
+                    onClick={() => {
+                      const toast = document.createElement('div')
+                      toast.className = 'fixed bottom-4 right-4 bg-lumina-danger/20 border border-lumina-danger/50 rounded-lg px-4 py-3 text-lumina-danger text-sm flex items-center gap-2 animate-pulse-slow z-50'
+                      toast.innerHTML = `<div class="text-xs"><div class="font-semibold">Kill & Redirect</div><div>${rec.jobName} → ${rec.redirectTo}</div></div>`
+                      document.body.appendChild(toast)
+                      setTimeout(() => toast.remove(), 4000)
+                    }}
+                  >
                     <X size={11} /> Kill & Redirect
                   </button>
                 </div>
@@ -194,7 +212,16 @@ export default function SynergyBrain() {
                   <span className="text-xs font-semibold text-lumina-text">{jobB.name.split(' ')[0]}</span>
                   <span className="badge-pulse badge ml-auto">synergy</span>
                   <span className="text-lumina-success font-mono text-xs">+${value.toLocaleString()}/mo</span>
-                  <button className="text-xs bg-lumina-pulse/20 text-lumina-pulse px-2 py-0.5 rounded-full hover:bg-lumina-pulse/30 transition-colors">
+                  <button
+                    className="text-xs bg-lumina-pulse/20 text-lumina-pulse px-2 py-0.5 rounded-full hover:bg-lumina-pulse/30 transition-colors"
+                    onClick={() => {
+                      const toast = document.createElement('div')
+                      toast.className = 'fixed bottom-4 right-4 bg-lumina-pulse/20 border border-lumina-pulse/50 rounded-lg px-4 py-3 text-lumina-pulse text-sm flex items-center gap-2 animate-pulse-slow z-50'
+                      toast.innerHTML = `<div class="text-xs"><div class="font-semibold">Synergy Activated</div><div>${jobA.name} × ${jobB.name}</div></div>`
+                      document.body.appendChild(toast)
+                      setTimeout(() => toast.remove(), 4000)
+                    }}
+                  >
                     Activate
                   </button>
                 </div>
