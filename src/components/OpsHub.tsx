@@ -10,20 +10,16 @@ import EdgeHarmonizer from './EdgeHarmonizer'
 import SynergyBrain from './SynergyBrain'
 import ContentSwarm from './ContentSwarm'
 import MonteCarloSimulator from './MonteCarloSimulator'
-import MoneyFlowOptimizer from './MoneyFlowOptimizer'
 import TaskPrioritizer from './TaskPrioritizer'
 import CashOutModal from './CashOutModal'
 import TransactionHistory from './TransactionHistory'
 import DigitalAssetStore from './DigitalAssetStore'
-import CustomerAcquisitionEngine from './CustomerAcquisitionEngine'
 import PolymarketScriptTrader from './PolymarketScriptTrader'
-import AgentOrchestrator from './AgentOrchestrator'
-import AIEducationHub from './AIEducationHub'
 import WalletPanel from './WalletPanel'
 import EarningsTicker from './EarningsTicker'
 import GoalTracker from './GoalTracker'
 import WithdrawalHistory from './WithdrawalHistory'
-// ── Real data hooks ─────────────────────────────────────────────────────────
+// ââ Real data hooks âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 import { useJobs, useJobStats } from '../hooks/useJobs'
 import { useMT5Account, useMT5Trades } from '../hooks/useMT5'
 import { useTodayBriefing, usePolyMarkets } from '../hooks/useSupabaseData'
@@ -50,7 +46,7 @@ const EMPTY_ACCOUNT: MT5Account = {
   monthPnl: 0,
 }
 
-// ── Ticker bar — live MT5 trades + live CoinGecko prices + live Polymarket ───
+// ââ Ticker bar â live MT5 trades + live CoinGecko prices + live Polymarket âââ
 function TickerBar() {
   const { data: account } = useMT5Account()
   const { data: prices }  = useCryptoPrices()
@@ -73,10 +69,10 @@ function TickerBar() {
   // Live Polymarket tickers from Supabase poly_markets table
   const polyTicks = polyMarkets.slice(0, 4).map((m) => {
     const yesPrice = m.outcomes?.[0]?.price ?? 0
-    const tag = m.question.length > 18 ? m.question.slice(0, 16) + '…' : m.question
+    const tag = m.question.length > 18 ? m.question.slice(0, 16) + 'â¦' : m.question
     return {
       s: `POLY:${tag}`,
-      p: `${Math.round(yesPrice * 100)}¢`,
+      p: `${Math.round(yesPrice * 100)}Â¢`,
       c: yesPrice >= 0.5 ? 'YES' : 'NO',
       pos: yesPrice >= 0.5,
     }
@@ -99,7 +95,7 @@ function TickerBar() {
   )
 }
 
-// ── Stat card ────────────────────────────────────────────────────────────────
+// ââ Stat card ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function StatCard({ label, value, sub, color = 'text-lumina-pulse', pulse = false }: {
   label: string; value: string; sub?: string; color?: string; pulse?: boolean
 }) {
@@ -112,7 +108,7 @@ function StatCard({ label, value, sub, color = 'text-lumina-pulse', pulse = fals
   )
 }
 
-// ── Main dashboard ────────────────────────────────────────────────────────────
+// ââ Main dashboard ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function Dashboard() {
   const { data: jobs = [],   isLoading: jobsLoading } = useJobs()
   const { data: account,     isLoading: acctLoading } = useMT5Account()
@@ -125,7 +121,7 @@ function Dashboard() {
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [rotating,   setRotating]    = useState(false)
 
-  // ── Cash Out modal state ──────────────────────────────────────────────────
+  // ââ Cash Out modal state ââââââââââââââââââââââââââââââââââââââââââââââââââ
   // null = closed, Job = single-job modal, 'all' = global cash-out
   const [cashOutTarget, setCashOutTarget] = useState<Job | 'all' | null>(null)
 
@@ -144,7 +140,7 @@ function Dashboard() {
   }, [refresh])
 
   const loading = jobsLoading || acctLoading || briefLoading
-  // Daily earnings from active jobs — this is what's actually available to cash out today
+  // Daily earnings from active jobs â this is what's actually available to cash out today
   const totalAvailable = stats.activeDailyTotal
 
   return (
@@ -162,7 +158,7 @@ function Dashboard() {
       {/* Task Prioritizer */}
       <TaskPrioritizer />
 
-      {/* Live earnings ticker + wallet panel — side by side */}
+      {/* Live earnings ticker + wallet panel â side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <EarningsTicker />
         <WalletPanel />
@@ -172,28 +168,28 @@ function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Today's PnL"
-          value={pnl.total !== 0 ? `${pnl.total >= 0 ? '+' : ''}$${pnl.total.toLocaleString()}` : '—'}
+          value={pnl.total !== 0 ? `${pnl.total >= 0 ? '+' : ''}$${pnl.total.toLocaleString()}` : 'â'}
           sub="MT5 + Polymarket"
           color="text-lumina-success"
           pulse
         />
         <StatCard
           label="Monthly Revenue"
-          value={stats.totalMonthly > 0 ? `$${(stats.totalMonthly / 1000).toFixed(1)}k` : '—'}
+          value={stats.totalMonthly > 0 ? `$${(stats.totalMonthly / 1000).toFixed(1)}k` : 'â'}
           sub={stats.totalProjected > 0 ? `Proj: $${(stats.totalProjected / 1000).toFixed(1)}k` : undefined}
           color="text-lumina-pulse"
         />
         <StatCard
           label="MT5 Equity"
-          value={acc.equity > 0 ? `$${acc.equity.toLocaleString()}` : '—'}
-          sub={acc.equity > 0 ? `${acc.dayPnl >= 0 ? '+' : ''}$${acc.dayPnl.toLocaleString()} today` : 'Bridge connecting…'}
+          value={acc.equity > 0 ? `$${acc.equity.toLocaleString()}` : 'â'}
+          sub={acc.equity > 0 ? `${acc.dayPnl >= 0 ? '+' : ''}$${acc.dayPnl.toLocaleString()} today` : 'Bridge connectingâ¦'}
           color="text-lumina-gold"
         />
         {/* Global Cash Out card */}
         <div className="card-glow flex flex-col gap-2">
           <div className="stat-label">Today's Earnings</div>
           <div className="stat-value text-lumina-success">
-            {totalAvailable > 0 ? `$${totalAvailable.toLocaleString()}` : '—'}
+            {totalAvailable > 0 ? `$${totalAvailable.toLocaleString()}` : 'â'}
           </div>
           <div className="text-[10px] text-lumina-dim">
             {stats.activeCount > 0 ? `${stats.activeCount} active jobs` : 'No active jobs'}
@@ -257,7 +253,7 @@ function Dashboard() {
         )}
       </div>
 
-      {/* Goal Tracker + Withdrawal History — side by side */}
+      {/* Goal Tracker + Withdrawal History â side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <GoalTracker />
         <WithdrawalHistory />
@@ -279,7 +275,7 @@ function Dashboard() {
         </div>
       )}
 
-      {/* ── Cash Out Modal (portal) ── */}
+      {/* ââ Cash Out Modal (portal) ââ */}
       {cashOutTarget !== null && (
         <CashOutModal
           job={cashOutTarget !== 'all' ? cashOutTarget : undefined}
@@ -291,7 +287,7 @@ function Dashboard() {
   )
 }
 
-// ── Live trades table ─────────────────────────────────────────────────────────
+// ââ Live trades table âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function LiveTradesTable({ acc, onRefresh, rotating }: {
   acc: MT5Account; onRefresh: () => void; rotating: boolean
 }) {
@@ -365,27 +361,23 @@ function LiveTradesTable({ acc, onRefresh, rotating }: {
   )
 }
 
-// ── Tab router ────────────────────────────────────────────────────────────────
+// ââ Tab router ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 export default function OpsHub({ activeTab }: OpsHubProps) {
   return (
     <div className="min-h-screen">
       <TickerBar />
       <div className="p-6">
         {activeTab === 'dashboard'        && <Dashboard />}
-        {activeTab === 'twin-engine'      && <TwinEngine />}
-        {activeTab === 'edge-harmonizer'  && <EdgeHarmonizer />}
+        {activeTab === 'content'          && <ContentSwarm />}
         {activeTab === 'funnel'           && <FunnelAgent />}
         {activeTab === 'digital-assets'   && <DigitalAssetStore />}
+        {activeTab === 'twin-engine'      && <TwinEngine />}
+        {activeTab === 'edge-harmonizer'  && <EdgeHarmonizer />}
+        {activeTab === 'poly-script'      && <PolymarketScriptTrader />}
         {activeTab === 'synergy'          && <SynergyBrain />}
-        {activeTab === 'content'          && <ContentSwarm />}
         {activeTab === 'montecarlo'       && <MonteCarloSimulator />}
-        {activeTab === 'money-flow'       && <MoneyFlowOptimizer />}
+        {activeTab === 'tax-optimizer'    && <TaxOptimizer />}
         {activeTab === 'transactions'     && <TransactionHistory />}
-        {activeTab === 'customer-acquisition' && <CustomerAcquisitionEngine />}
-        {activeTab === 'poly-script'     && <PolymarketScriptTrader />}
-        {activeTab === 'agent-orchestrator' && <AgentOrchestrator />}
-        {activeTab === 'education'       && <AIEducationHub />}
-        {activeTab === 'tax-optimizer'   && <TaxOptimizer />}
       </div>
     </div>
   )
