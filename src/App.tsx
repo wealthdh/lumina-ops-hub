@@ -14,12 +14,9 @@ type Tab =
   | 'synergy'
   | 'content'
   | 'montecarlo'
-  | 'money-flow'
   | 'transactions'
-  | 'customer-acquisition'
   | 'poly-script'
-  | 'agent-orchestrator'
-  | 'education'
+  | 'tax-optimizer'
 
 function AppInner() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
