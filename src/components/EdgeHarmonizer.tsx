@@ -5,6 +5,7 @@
  * ALL DATA LIVE — no mock/hardcoded data.
  * - Polymarket prices: Supabase poly_markets table
  * - MT5 implied: derived from live MT5 positions (useMT5Trades)
+ 
  * - Signal history: Supabase arbitrage_signals table
  * - Arbitrage detection: detectArbitrage() compares live poly vs MT5
  */
