@@ -265,7 +265,7 @@ export default function JobCard({ job, rank, onCashOut }: JobCardProps) {
         >
           <DollarSign size={12} />
           {job.dailyProfit > 0
-            ? `Cash Out · $${job.dailyProfit.toLocaleString()}/day`
+            ? `Cash Out - $${job.dailyProfit.toLocaleString()}/day`
             : 'Cash Out'}
         </button>
 

@@ -167,14 +167,14 @@ export default function Sidebar({ activeTab, onTabChange, collapsed, onToggle, i
       {/* Version tag */}
       {!collapsed && (
         <div className="px-4 py-3 border-t border-lumina-border">
-          <div className="text-lumina-dim text-xs font-mono">v2.0 · LuminaPulse MT5</div>
+          <div className="text-lumina-dim text-xs font-mono">v2.0 - LuminaPulse MT5</div>
           <div className="flex items-center gap-1.5 mt-1">
             <div className="pulse-dot" />
             <span className="text-lumina-success text-xs">Bridge Connected</span>
           </div>
           <div className="flex items-center gap-1.5 mt-1">
             <div className="w-1.5 h-1.5 rounded-full bg-lumina-pulse animate-pulse" />
-            <span className="text-lumina-pulse text-[10px] font-semibold">24/7 AUTO · ALL JOBS LIVE</span>
+            <span className="text-lumina-pulse text-[10px] font-semibold">24/7 AUTO - ALL JOBS LIVE</span>
           </div>
         </div>
       )}

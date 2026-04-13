@@ -781,7 +781,7 @@ export default function DigitalAssetStore() {
 
       {/* Debug: Data source indicator */}
       <div className="text-[9px] text-lumina-dim/50 text-center font-mono">
-        Data source: orders table (webhook-verified) · {orders.length} orders · {products.length} products
+        Data source: orders table (webhook-verified) - {orders.length} orders - {products.length} products
       </div>
     </div>
   )

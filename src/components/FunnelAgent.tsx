@@ -253,7 +253,7 @@ function GenerateModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm text-lumina-text font-medium">Stripe Invoice</div>
                     <div className="text-xs text-lumina-dim truncate">
-                      ${lead.estimatedValue.toLocaleString()} · Net 14 · Click to pay
+                      ${lead.estimatedValue.toLocaleString()} - Net 14 - Click to pay
                     </div>
                   </div>
                   <ExternalLink size={12} className="text-lumina-dim group-hover:text-lumina-success flex-shrink-0" />
@@ -530,7 +530,7 @@ export default function FunnelAgent() {
         <div>
           <h1 className="text-lumina-text font-bold text-xl">AI Lead-to-Cash Funnel</h1>
           <p className="text-lumina-dim text-sm">
-            Full qualification → proposal + contract + Stripe invoice · Live from Supabase
+            Full qualification → proposal + contract + Stripe invoice - Live from Supabase
           </p>
         </div>
         <button
@@ -609,7 +609,7 @@ export default function FunnelAgent() {
                 </span>
                 <div className="min-w-0">
                   <span className="text-lumina-pulse text-xs font-semibold">{l.name}</span>
-                  {l.company && <span className="text-lumina-muted text-xs"> · {l.company}</span>}
+                  {l.company && <span className="text-lumina-muted text-xs"> - {l.company}</span>}
                   <p className="text-lumina-dim text-xs mt-0.5">
                     {l.stage === 'won'         ? `✅ WON — $${l.estimatedValue.toLocaleString()} closed` :
                      l.stage === 'negotiation' ? '💬 Active negotiation in progress' :

@@ -212,7 +212,7 @@ function LoginScreen() {
 
         {/* Footer hint */}
         <p className="text-center text-lumina-muted text-xs mt-4">
-          Connects to your Supabase project · RLS-protected
+          Connects to your Supabase project - RLS-protected
         </p>
       </div>
     </div>

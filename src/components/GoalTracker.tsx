@@ -166,7 +166,7 @@ export default function GoalTracker() {
           <div>
             <div className="text-lumina-text font-semibold text-sm">Daily Revenue Goals</div>
             <div className="text-[10px] text-lumina-dim">
-              {goalsMetToday}/{totalGoals} goals met today ·{' '}
+              {goalsMetToday}/{totalGoals} goals met today -{' '}
               ${totalDailyEarned.toFixed(0)} of ${totalDailyGoal.toFixed(0)} target
             </div>
           </div>

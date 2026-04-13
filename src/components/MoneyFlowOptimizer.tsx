@@ -56,7 +56,7 @@ export default function MoneyFlowOptimizer() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lumina-text font-bold text-xl">AI Money Flow Optimizer</h1>
-          <p className="text-lumina-dim text-sm">PuLP nightly capital reallocation · Kelly sizing · cross-job routing</p>
+          <p className="text-lumina-dim text-sm">PuLP nightly capital reallocation - Kelly sizing - cross-job routing</p>
         </div>
         <button
           className="btn-pulse flex items-center gap-2 text-sm"
@@ -180,10 +180,10 @@ export default function MoneyFlowOptimizer() {
         <div className="section-header">PuLP Solver Log (Last Run)</div>
         <div className="font-mono text-xs text-lumina-dim space-y-1 bg-lumina-bg p-3 rounded-lg">
           {[
-            'PuLP v2.8 · CBC solver',
+            'PuLP v2.8 - CBC solver',
             'Objective: maximize(∑ allocation_i × expected_return_i)',
             'Constraints: ∑ allocation_i = 100%, all ≥ 0%, max_30pct, kelly_cap',
-            'Status: Optimal · 0.003s',
+            'Status: Optimal - 0.003s',
             'Objective value: 2.847 (weighted avg return)',
             'Top move: AI UGC Factory +5% (marginal gain $2,100/mo)',
             'Capped: Liquidity Sniper → Kelly max 20%',

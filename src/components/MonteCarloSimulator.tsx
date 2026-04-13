@@ -88,7 +88,7 @@ export default function MonteCarloSimulator() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lumina-text font-bold text-xl">Predictive Scenario Runner</h1>
-          <p className="text-lumina-dim text-sm">1,000 Monte-Carlo runs · 30-day revenue forecast</p>
+          <p className="text-lumina-dim text-sm">1,000 Monte-Carlo runs - 30-day revenue forecast</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">

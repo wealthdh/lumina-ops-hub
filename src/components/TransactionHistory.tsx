@@ -181,7 +181,7 @@ export default function TransactionHistory() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lumina-text font-bold text-xl">Cash Out History</h1>
-          <p className="text-lumina-dim text-sm mt-0.5">All withdrawals · real-time via Supabase</p>
+          <p className="text-lumina-dim text-sm mt-0.5">All withdrawals - real-time via Supabase</p>
         </div>
         <button
           onClick={() => void refetch()}

@@ -102,7 +102,7 @@ export default function EarningsTicker() {
             <div className="text-lumina-text font-semibold text-sm">Today's Earnings</div>
             <div className="text-[10px] text-lumina-dim flex items-center gap-1">
               <div className="w-1.5 h-1.5 rounded-full bg-lumina-success animate-pulse" />
-              Live · {formatTime(secondsToday)} elapsed
+              Live - {formatTime(secondsToday)} elapsed
             </div>
           </div>
         </div>

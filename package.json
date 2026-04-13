@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test:first-run": "npx tsx scripts/first-run-test.ts"
+    "test:first-run": "npx tsx scripts/first-run-test.ts",
+    "pipeline": "node scripts/ugc-pipeline-runner.mjs",
+    "pipeline:once": "node scripts/ugc-pipeline-runner.mjs --once",
+    "pipeline:fast": "POLL_INTERVAL_MIN=2 node scripts/ugc-pipeline-runner.mjs",
+    "pipeline:burst": "CREATIVES_PER_CYCLE=10 POLL_INTERVAL_MIN=1 node scripts/ugc-pipeline-runner.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

@@ -61,7 +61,7 @@ function MirrorEdgeModal({ onClose }: { onClose: () => void }) {
             <div className="p-3 bg-lumina-bg/60 rounded-lg">
               <div className="text-xs text-lumina-dim mb-1">MT5 Hedge (auto-computed)</div>
               <div className="text-sm text-lumina-text">EURUSD BUY — 0.3 lot</div>
-              <div className="text-xs text-lumina-dim mt-1">Kelly: 0.12 fraction · SL: 1.0780 · TP: 1.0960</div>
+              <div className="text-xs text-lumina-dim mt-1">Kelly: 0.12 fraction - SL: 1.0780 - TP: 1.0960</div>
             </div>
             <div>
               <label className="text-xs text-lumina-dim block mb-1">Capital to deploy (USDT)</label>
@@ -85,7 +85,7 @@ function MirrorEdgeModal({ onClose }: { onClose: () => void }) {
           <div className="space-y-4">
             <div className="space-y-2 text-sm">
               {[
-                ['Polymarket:', `BUY YES · $${capital.toLocaleString()} USDT`],
+                ['Polymarket:', `BUY YES - $${capital.toLocaleString()} USDT`],
                 ['MT5 Hedge:',  'Pending — will calculate from live feeds'],
                 ['Net Edge:',   'Calculated after execution'],
                 ['Time to exp:','Varies by market'],
@@ -226,7 +226,7 @@ export default function TwinEngine() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lumina-text font-bold text-xl">Twin-Engine Dashboard</h1>
-          <p className="text-lumina-dim text-sm">Polymarket + MT5 live split-screen · one-tap Mirror Edge</p>
+          <p className="text-lumina-dim text-sm">Polymarket + MT5 live split-screen - one-tap Mirror Edge</p>
         </div>
         <button className="btn-pulse flex items-center gap-2" onClick={() => setShowMirror(true)}>
           <Zap size={14} />
@@ -239,7 +239,7 @@ export default function TwinEngine() {
         {/* Polymarket panel */}
         <div className="card-glow border-lumina-violet/30">
           <div className="section-header text-purple-400">
-            Polymarket · Top Markets
+            Polymarket - Top Markets
           </div>
           <div className="space-y-3">
             {marketsLoading && markets.length === 0 ? (
@@ -305,7 +305,7 @@ export default function TwinEngine() {
         {/* MT5 panel */}
         <div className="card-glow border-lumina-gold/30">
           <div className="section-header text-lumina-gold">
-            MT5 LuminaPulse · Live Account
+            MT5 LuminaPulse - Live Account
           </div>
 
           {/* Equity curve — real from mt5_snapshots table */}
@@ -366,7 +366,7 @@ export default function TwinEngine() {
           <div className="pulse-dot" />
           <div>
             <div className="text-sm text-lumina-text font-semibold">Live Arbitrage Signal: Fed Rate Cut market</div>
-            <div className="text-xs text-lumina-dim">Poly 62¢ vs MT5 implied 66% · Edge: +4.1% · Expires ~14d</div>
+            <div className="text-xs text-lumina-dim">Poly 62¢ vs MT5 implied 66% - Edge: +4.1% - Expires ~14d</div>
           </div>
         </div>
         <button className="btn-pulse text-sm flex items-center gap-2" onClick={() => setShowMirror(true)}>

@@ -1177,7 +1177,7 @@ export default function ContentSwarm() {
                 <div className="text-xs text-lumina-text font-medium">{p.name}</div>
                 {distributed > 0 ? (
                   <div className="text-[10px] text-lumina-success mt-0.5 font-mono">
-                    {distributed} posted{platformViews > 0 ? ` · ${platformViews} views` : ''}
+                    {distributed} posted{platformViews > 0 ? ` - ${platformViews} views` : ''}
                   </div>
                 ) : isConnected ? (
                   <div className="text-[10px] text-amber-400 mt-0.5">Ready</div>

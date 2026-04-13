@@ -232,7 +232,7 @@ function Dashboard() {
             )}
             <div className="flex items-center gap-2 text-xs text-lumina-dim">
               <div className="pulse-dot" />
-              Live · {lastRefresh.toLocaleTimeString()}
+              Live - {lastRefresh.toLocaleTimeString()}
             </div>
           </div>
         </div>
@@ -274,7 +274,7 @@ function Dashboard() {
           </div>
           <div className="flex items-center gap-1.5">
             <div className="pulse-dot" />
-            <span className="text-lumina-dim">MT5 Live · Acc #{acc.accountId}</span>
+            <span className="text-lumina-dim">MT5 Live - Acc #{acc.accountId}</span>
           </div>
         </div>
       )}

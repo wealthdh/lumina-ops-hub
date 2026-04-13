@@ -199,9 +199,9 @@ export default function WithdrawalHistory() {
                     </div>
                     <div className="text-[10px] text-lumina-muted flex items-center gap-2 mt-0.5">
                       <span>{fmt(tx.createdAt)}</span>
-                      {tx.network && <span className="capitalize">· {NETWORK_LABEL[tx.network] ?? tx.network}</span>}
+                      {tx.network && <span className="capitalize">- {NETWORK_LABEL[tx.network] ?? tx.network}</span>}
                       {tx.toAddress && (
-                        <span className="font-mono">· to {tx.toAddress.slice(0,6)}…{tx.toAddress.slice(-4)}</span>
+                        <span className="font-mono">- to {tx.toAddress.slice(0,6)}…{tx.toAddress.slice(-4)}</span>
                       )}
                     </div>
                   </div>
