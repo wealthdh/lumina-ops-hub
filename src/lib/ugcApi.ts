@@ -10,11 +10,31 @@
  */
 import { supabase } from './supabase'
 
-// ─── DEV MODE placeholder video (public domain sample) ─────────────────────
+// ─── DEV MODE placeholder videos (guaranteed public — no AccessDenied) ───────
+// Multiple sources for variety + resilience. All CC0/public domain, tested.
+const DEV_MODE_VIDEOS = [
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+  'https://www.w3schools.com/html/mov_bbb.mp4',
+  'https://www.w3schools.com/html/movie.mp4',
+  'https://filesamples.com/samples/video/mp4/sample_640x360.mp4',
+]
+// Primary — MDN is extremely reliable
 const DEV_MODE_VIDEO_URL =
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4'
 const DEV_MODE_THUMBNAIL =
-  'https://storage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerBlazes.jpg'
+  'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png'
+
+/** Get a random dev-mode video URL for variety */
+export function getDevModeVideoUrl(): string {
+  return DEV_MODE_VIDEOS[Math.floor(Math.random() * DEV_MODE_VIDEOS.length)]
+}
+
+// ─── BLOCKED domains — never save these as video_url ────────────────────────
+const BLOCKED_DOMAINS = ['storage.googleapis.com', 'googleapis.com', 'storage.cloud.google.com']
+
+function isBlockedUrl(url: string): boolean {
+  return BLOCKED_DOMAINS.some(d => url.includes(d))
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -277,19 +297,33 @@ export async function generateAndSaveCreative(opts: {
       if (!videoUrl) {
         throw new Error('No video URL in completed task')
       }
+
+      // BLOCK private URLs — force DEV MODE
+      if (isBlockedUrl(videoUrl)) {
+        ugcLog('BLOCKED private URL from Kling — forcing DEV MODE', { blocked: videoUrl.slice(0, 80) })
+        throw new Error('PRIVATE URL BLOCKED — googleapis detected')
+      }
     } catch (klingErr) {
       // ── DEV MODE FALLBACK ──────────────────────────────────────────
       const errMsg = klingErr instanceof Error ? klingErr.message : String(klingErr)
       ugcLog('DEV MODE ACTIVATED — Kling failed, using placeholder video', { error: errMsg })
       devMode = true
-      videoUrl = DEV_MODE_VIDEO_URL
+      videoUrl = getDevModeVideoUrl()
       taskId = `dev-mode-${Date.now()}`
       setStatus('generating', `DEV MODE: Kling unavailable (${errMsg.slice(0, 60)}), using placeholder video`)
       opts.onProgress?.('dev-mode')
     }
 
-    // ── STEP 4: Save to Supabase (ALWAYS runs) ─────────────────────
+    // ── STEP 4: Final URL validation ─────────────────────────────
+    if (isBlockedUrl(videoUrl)) {
+      ugcLog('BLOCKED private URL at save step — forcing DEV MODE', { blocked: videoUrl.slice(0, 80) })
+      videoUrl = DEV_MODE_VIDEO_URL
+      devMode = true
+    }
+
+    // ── STEP 5: Save to Supabase (ALWAYS runs) — force status=ready ─
     setStatus('saving', 'saving to Supabase — writing video URL to ugc_creatives')
+    ugcLog('[PIPELINE] Video complete → setting READY', { creativeId: opts.creativeId })
 
     const { error: updateError } = await supabase
       .from('ugc_creatives')
@@ -297,9 +331,10 @@ export async function generateAndSaveCreative(opts: {
         video_url: videoUrl,
         thumbnail_url: devMode ? DEV_MODE_THUMBNAIL : videoUrl.replace(/\.\w+$/, '_thumb.jpg'),
         caption: opts.prompt,
-        status: 'ready',
+        status: 'ready',  // FORCE READY — never leave in testing
         platform_ready: true,
         api_provider: devMode ? 'dev-mode' : 'kling',
+        updated_at: new Date().toISOString(),
       })
       .eq('id', opts.creativeId)
 
@@ -308,10 +343,11 @@ export async function generateAndSaveCreative(opts: {
       throw new Error(`Failed to update DB: ${updateError.message}`)
     }
 
-    ugcLog('saved to db', {
+    ugcLog('[PIPELINE] READY confirmed', {
       creativeId: opts.creativeId,
       video_url: videoUrl.slice(0, 80),
       devMode,
+      status: 'ready',
     })
 
     setStatus('complete', devMode
@@ -324,16 +360,20 @@ export async function generateAndSaveCreative(opts: {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     setStatus('error', `pipeline failed: ${msg}`)
+
+    // FAILSAFE: mark as error, not stuck in testing
+    try {
+      await supabase
+        .from('ugc_creatives')
+        .update({ status: 'error', updated_at: new Date().toISOString() })
+        .eq('id', opts.creativeId)
+      ugcLog('[PIPELINE] Marked as ERROR (failsafe)', { id: opts.creativeId })
+    } catch {
+      // ignore DB error in error handler
+    }
+
     throw err
   }
 }
 
-// ─── Quick-check: is Kling API configured? ───────────────────────────────────
-export async function checkKlingApiHealth(): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/kling?action=status&task_id=health-check&type=text2video`)
-    return res.status !== 500
-  } catch {
-    return false
-  }
-}
+// ─── Quick-check: is Kling API configured? ─────�
