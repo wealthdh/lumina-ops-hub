@@ -282,15 +282,18 @@ async function handleConversion({ stripeEventId, session, intentId, amountUsd, c
     if (incomeError.code !== '23505') {
       log('error', 'Failed to insert income_entry', { error: incomeError.message })
     }
-  } else {
-    log('info', 'Income entry recorded', { id: incomeEntry?.id, amount: amountUsd })
-    // Backfill conversion_event.income_entry_id
-    if (convEvent?.id) {
+  } else if (incomeEntry) {
+    log('info', 'Income entry recorded', { id: incomeEntry.id, amount: amountUsd })
+    // Backfill conversion_event.income_entry_id — only when insert succeeded and returned a row
+    if (convEvent?.id && incomeEntry.id) {
       await supabase
         .from('conversion_events')
         .update({ income_entry_id: incomeEntry.id })
         .eq('id', convEvent.id)
     }
+  } else {
+    // resolvedUserId was null — income entry skipped, no backfill needed
+    log('warn', 'Income entry not created (no user_id resolved) — skipping backfill', { stripeEventId })
   }
 
   // ── 5. Insert / upsert orders table (legacy behavior preserved) ───────────

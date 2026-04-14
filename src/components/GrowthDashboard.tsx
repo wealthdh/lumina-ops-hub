@@ -154,14 +154,14 @@ function useDailyRevenue(days = 14) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return []
 
-      // Income entries for UGC (creative_id is not null)
+      // Income entries attributed to Stripe conversions
       const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
       const { data: income } = await supabase
         .from('income_entries')
         .select('amount, entry_date')
         .eq('user_id', user.id)
+        .eq('source', 'stripe')
         .gte('entry_date', cutoff)
-        .not('creative_id' as string, 'is', null)
 
       // Posts per day from ugc_creatives
       const { data: posts } = await supabase
