@@ -719,8 +719,24 @@ function ManualPostQueue({ creatives }: { creatives: UgcCreative[] }) {
 function AutoRunnerPanel() {
   const [state, setState] = useState<AutoRunnerState | null>(null)
   const [running, setRunning] = useState(false)
+  const [runnerConfig, setRunnerConfig] = useState<{ kill_switch_active: boolean; daily_generation_goal: number } | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const controlRef = useRef<AutoRunnerController | null>(null)
+
+  // Load kill_switch + daily_generation_goal from DB on mount
+  useEffect(() => {
+    supabase
+      .from('auto_runner_config')
+      .select('kill_switch_active, daily_generation_goal')
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data) setRunnerConfig({
+          kill_switch_active: data.kill_switch_active ?? false,
+          daily_generation_goal: data.daily_generation_goal ?? 50,
+        })
+      })
+  }, [])
 
   // Poll state every 5s when running
   useEffect(() => {
@@ -735,15 +751,16 @@ function AutoRunnerPanel() {
   }, [running])
 
   const handleStart = useCallback(() => {
+    if (runnerConfig?.kill_switch_active) return // respect DB kill switch
     const ctrl = startAutoRunner({
       intervalMs: 900_000, // 15 minutes (reduced from 3 min to respect Kling rate limits)
-      dailyGoal: 50,
+      dailyGoal: runnerConfig?.daily_generation_goal ?? 50,
       onUpdate: (newState) => setState(newState),
     })
     controlRef.current = ctrl
     setRunning(true)
     setState(ctrl.getState())
-  }, [])
+  }, [runnerConfig])
 
   const handleStop = useCallback(() => {
     stopAutoRunner()
@@ -769,11 +786,15 @@ function AutoRunnerPanel() {
         </div>
         <button
           onClick={running ? handleStop : handleStart}
+          disabled={!running && (runnerConfig?.kill_switch_active ?? false)}
+          title={!running && runnerConfig?.kill_switch_active ? 'Kill switch active — disabled in DB' : undefined}
           className={clsx(
             'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all',
-            running
-              ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
-              : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30',
+            !running && runnerConfig?.kill_switch_active
+              ? 'bg-zinc-700/40 text-zinc-500 border border-zinc-700/40 cursor-not-allowed'
+              : running
+                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
+                : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30',
           )}
         >
           {running ? <><StopCircle size={12} /> Stop Engine</> : <><Power size={12} /> Start Engine</>}

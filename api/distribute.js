@@ -189,12 +189,45 @@ const DISTRIBUTORS = {
 
     const log = (msg, data) => console.log(`[DISTRIBUTION][twitter][${new Date().toISOString()}] ${msg}`, data ? JSON.stringify(data) : '')
 
-    try {
-      const caption = (creative.caption || creative.title || '').substring(0, 280)
+    // ── ANTI-DUPLICATE: 3-level tweet uniqueness ─────────────────────────────
+    // Level 1: rotating caption prefix variant (seeded by creative id for reproducibility)
+    const CAPTION_VARIATIONS = [
+      'This changed everything:',
+      'Nobody is talking about this:',
+      'I tested this so you don\'t have to:',
+      'This is how I\'m doing it:',
+      'Quietly making money with this:',
+      'The system I wish I had earlier:',
+      'Real results, not theory:',
+      'Most people sleep on this:',
+    ]
+    const variantIndex = parseInt(creative.id.replace(/-/g, '').slice(0, 4), 16) % CAPTION_VARIATIONS.length
+    const captionPrefix = CAPTION_VARIATIONS[variantIndex]
 
+    // Level 2: base caption from DB
+    const baseCaption = (creative.caption || creative.title || '').substring(0, 200)
+
+    // Level 3: unique tag using FIRST 6 chars of creative id
+    const uniqueTag = `#lp${creative.id.slice(0, 6)}`
+
+    // ── REVENUE LOOP: route monetization URL through track-click ─────────────
+    // This ensures every click is attributed and logged to click_events table.
+    const appUrl = process.env.VITE_APP_URL || 'https://lumina-ops-hub.vercel.app'
+    let tweetLink = creative.video_url || ''
+    if (creative.monetization_url) {
+      const trackedUrl = `${appUrl}/api/track-click?creative_id=${creative.id}&platform=twitter_x&redirect_url=${encodeURIComponent(creative.monetization_url)}`
+      tweetLink = trackedUrl
+    }
+
+    const buildTweetText = () =>
+      `${captionPrefix}\n\n${baseCaption}\n\n${uniqueTag}${tweetLink ? '\n\n' + tweetLink : ''}`
+        .substring(0, 280)
+
+    try {
       if (useOAuth2) {
         // ── OAuth 2.0 User Context (Bearer token from platform_connections) ──
-        log('Posting tweet via OAuth 2.0', { caption: caption.substring(0, 50) })
+        const tweetText = buildTweetText()
+        log('Posting tweet via OAuth 2.0', { preview: tweetText.substring(0, 80) })
 
         const tweetRes = await fetchWithTimeout('https://api.x.com/2/tweets', {
           method: 'POST',
@@ -202,11 +235,7 @@ const DISTRIBUTORS = {
             'Authorization': `Bearer ${connection.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            text: creative.video_url
-              ? `${caption}\n\n${creative.video_url}`
-              : caption,
-          }),
+          body: JSON.stringify({ text: tweetText }),
         })
 
         const tweetData = await tweetRes.json()
@@ -227,11 +256,8 @@ const DISTRIBUTORS = {
       }
 
       // ── OAuth 1.0a (env var credentials) ───────────────────────────────────
-      log('Posting tweet via OAuth 1.0a', { caption: caption.substring(0, 50) })
-
-      const tweetText = creative.video_url
-        ? `${caption}\n\n${creative.video_url}`
-        : caption
+      const tweetText = buildTweetText()
+      log('Posting tweet via OAuth 1.0a', { preview: tweetText.substring(0, 80) })
 
       // Build OAuth 1.0a signature
       const oauthParams = {

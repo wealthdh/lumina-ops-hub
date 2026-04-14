@@ -20,7 +20,8 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+  // Use same key name as all other API handlers; fall back to the role key alias
+  process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 )
 
 export default async function handler(req, res) {

@@ -1,6 +1,9 @@
 /**
- * MT5 P&L Sync — reads closed trades from mt5_trades, calculates daily/monthly P&L
+ * MT5 P&L Sync — reads trades from mt5_trades, calculates daily/monthly P&L
  * Runs every 15 min via Vercel cron, or manually via GET /api/mt5-sync
+ *
+ * Schema fix (2026-04-14): mt5_trades uses open_time (not closed_at),
+ * and only has a profit column (no loss/commission).
  */
 import { createClient } from '@supabase/supabase-js';
 
@@ -39,12 +42,12 @@ export default async function handler(req, res) {
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     const endOfDay = tomorrow.toISOString();
 
-    // Today's trades
+    // Today's trades — uses open_time (the column that actually exists)
     const { data: todayTrades, error: tradesError } = await supabase
       .from('mt5_trades')
-      .select('profit, loss, commission')
-      .gte('closed_at', startOfDay)
-      .lt('closed_at', endOfDay);
+      .select('profit')
+      .gte('open_time', startOfDay)
+      .lt('open_time', endOfDay);
 
     if (tradesError) {
       log('error', 'Failed to fetch today trades', { error: tradesError.message });
@@ -53,7 +56,7 @@ export default async function handler(req, res) {
 
     let dailyProfit = 0;
     for (const trade of (todayTrades || [])) {
-      dailyProfit += (trade.profit || 0) - (trade.loss || 0) - (trade.commission || 0);
+      dailyProfit += (trade.profit || 0);
     }
 
     log('info', `Daily P&L: $${dailyProfit.toFixed(2)}`, { trades: (todayTrades || []).length });
@@ -65,9 +68,9 @@ export default async function handler(req, res) {
 
     const { data: monthTrades, error: monthTradesError } = await supabase
       .from('mt5_trades')
-      .select('profit, loss, commission')
-      .gte('closed_at', monthStart.toISOString())
-      .lt('closed_at', endOfDay);
+      .select('profit')
+      .gte('open_time', monthStart.toISOString())
+      .lt('open_time', endOfDay);
 
     if (monthTradesError) {
       log('error', 'Failed to fetch monthly trades', { error: monthTradesError.message });
@@ -76,12 +79,12 @@ export default async function handler(req, res) {
 
     let monthlyProfit = 0;
     for (const trade of (monthTrades || [])) {
-      monthlyProfit += (trade.profit || 0) - (trade.loss || 0) - (trade.commission || 0);
+      monthlyProfit += (trade.profit || 0);
     }
 
     log('info', `Monthly P&L: $${monthlyProfit.toFixed(2)}`, { trades: (monthTrades || []).length });
 
-    // Update LuminaPulse job
+    // Update LuminaPulse job row in ops_jobs
     const { data: job } = await supabase
       .from('ops_jobs')
       .select('id')
@@ -104,7 +107,7 @@ export default async function handler(req, res) {
         log('info', 'Updated LuminaPulse job with P&L data');
       }
     } else {
-      log('warn', 'LuminaPulse job not found in ops_jobs');
+      log('warn', 'LuminaPulse job not found in ops_jobs — skipping update');
     }
 
     return res.status(200).json({

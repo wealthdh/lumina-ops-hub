@@ -57,11 +57,11 @@ export default async function handler(req, res) {
     const results = [];
 
     for (const charge of charges.data) {
+      // Dedup via reference_id (same approach as stripe-webhook — unique index enforces this)
       const { data: existing } = await supabase
         .from('income_entries')
         .select('id')
-        .eq('source', 'stripe')
-        .ilike('description', `%${charge.id}%`)
+        .eq('reference_id', charge.id)
         .maybeSingle();
 
       if (existing) {
@@ -69,17 +69,16 @@ export default async function handler(req, res) {
         continue;
       }
 
+      // income_entries schema: id, user_id, job_id, source, amount, description,
+      // reference_id, entry_date, created_at, creative_id, is_placeholder
+      // (no currency or metadata columns)
       const { error: insertError } = await supabase.from('income_entries').insert({
         job_id: jobId,
         source: 'stripe',
         amount: charge.amount / 100,
-        currency: charge.currency.toUpperCase(),
-        description: `Stripe charge: ${charge.description || 'Digital product sale'} [${charge.id}]`,
-        metadata: {
-          stripe_charge_id: charge.id,
-          customer_email: charge.billing_details?.email,
-          charge_status: charge.status,
-        },
+        description: `Stripe charge: ${charge.description || 'Digital product sale'} [${charge.id}] (${charge.currency.toUpperCase()})`,
+        reference_id: charge.id,
+        entry_date: new Date(charge.created * 1000).toISOString().split('T')[0],
       });
 
       if (insertError) {
