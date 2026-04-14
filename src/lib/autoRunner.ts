@@ -56,47 +56,40 @@ interface RunnerOptions {
 
 // ─── Template Library ────────────────────────────────────────────────────────
 
+// ── REVENUE MODE: Templates are WINNER PATTERNS ONLY ─────────────────────────
+// Weighted toward MT5 Gold ($97) — highest revenue per conversion.
+// Template selection respects the 70/20/10 revenue split:
+//   70% → MT5 Gold Scalper EA ($97)
+//   20% → AI Prompt Toolkit ($29) + UGC Swarm ($19)
+//   10% → Kelly Pro ($14.99)
+// Rotation: 7 MT5 slots, 2 AI/UGC slots, 1 Kelly slot per 10-template cycle.
+
 const CREATIVE_TEMPLATES: Template[] = [
-  { id: 't1', title: 'AI Trading Bot Earnings', platform: 'Twitter/X',
-    prompt: 'AI trading bot dashboard showing real-time profit, $500+ daily earnings, multiple timeframe charts, green indicators, neon accents, cinematic lighting' },
-  { id: 't2', title: 'Content Pipeline Automation', platform: 'TikTok',
-    prompt: 'Animated workflow: idea → script → video → posting with AI at each step, hours to minutes, dynamic transitions, futuristic aesthetic' },
-  { id: 't3', title: 'Marketing Team Replacement', platform: 'Instagram',
-    prompt: 'Split screen: left = $5000/month team chaos, right = sleek AI doing same work alone, cost reduction visual, clean modern design' },
-  { id: 't4', title: 'Passive Income System', platform: 'YouTube',
-    prompt: 'Person relaxing while income notifications pop up, multiple revenue streams (affiliate, digital products, ads), peaceful beach setting' },
-  { id: 't5', title: 'AI Copywriting Magic', platform: 'Twitter/X',
-    prompt: 'Before/after: blank page → AI generates perfect high-converting copy instantly, real headlines being written in real-time' },
-  { id: 't6', title: 'Social Media Domination', platform: 'TikTok',
-    prompt: 'Instagram feed growing timelapse: posts scheduled, comments flowing, engagement climbing exponentially via AI automation' },
-  { id: 't7', title: 'Email Automation Success', platform: 'LinkedIn',
-    prompt: 'Dashboard: email sequences on autopilot, open rates climbing, conversions increasing, AI personalizing each email' },
-  { id: 't8', title: 'Video Editing Speed Run', platform: 'Instagram',
-    prompt: '60-second transformation: raw footage → fully edited professional video using AI, B-roll auto-selected, transitions applied' },
-  { id: 't9', title: 'Personal Brand Building', platform: 'Twitter/X',
-    prompt: 'Creator establishing authority: daily posting, audience growing, verification badge appearing, sponsorships rolling in via AI' },
-  { id: 't10', title: 'E-Commerce Automation', platform: 'YouTube',
-    prompt: 'Shopify store running 24/7 with AI managing descriptions, customer service, inventory, orders, revenue dashboard' },
-  { id: 't11', title: 'Influencer Dashboard', platform: 'TikTok',
-    prompt: 'Creator watching follower spike, viral video trending, brand deal notifications, AI optimization, celebrating success' },
-  { id: 't12', title: 'SEO Automation Blueprint', platform: 'LinkedIn',
-    prompt: 'Website ranking: page 5 → page 1 for high-value keywords using AI SEO, traffic shooting up, organic leads multiplying' },
-  { id: 't13', title: 'Lead Generation Machine', platform: 'Twitter/X',
-    prompt: 'Sales funnel: cold prospects → qualified leads → customers, AI handling each stage, closing deals on autopilot' },
-  { id: 't14', title: 'Content Batching Mastery', platform: 'Instagram',
-    prompt: 'Creator batching 30 days of content in one afternoon, AI scripting, scheduling, calendar filled, time freedom achieved' },
-  { id: 't15', title: 'Podcast Monetization', platform: 'YouTube',
-    prompt: 'Podcast workflow: recording → AI transcription → show notes → YouTube → social clips auto-generated, multiple revenue streams' },
-  { id: 't16', title: 'Affiliate Marketing Scale', platform: 'TikTok',
-    prompt: 'Promoting product through 10 angles simultaneously, each optimized by AI, commission notifications stacking up' },
-  { id: 't17', title: 'Crypto Arbitrage Bot', platform: 'YouTube',
-    prompt: 'Trading bot detecting arbitrage opportunities across exchanges, executing in milliseconds, profit notifications, balance growing' },
-  { id: 't18', title: 'AI UGC Factory Blueprint', platform: 'TikTok',
-    prompt: 'AI generating 10+ videos simultaneously, each optimized per platform, brands paying $500-$2k per video, revenue dashboard' },
-  { id: 't19', title: 'Polymarket Edge Scanner', platform: 'Twitter/X',
-    prompt: 'Prediction market dashboard highlighting pricing inefficiencies, edge opportunities highlighted in real-time, profitable trades executing' },
-  { id: 't20', title: 'Kelly Calculator Pro', platform: 'LinkedIn',
-    prompt: 'Kelly criterion calculator showing optimal position sizing, replacing guesswork with math, portfolio performance improving dramatically' },
+  // ── MT5 GOLD SCALPER EA ($97) — 7 slots ─────────────────────────────────
+  { id: 'r1', title: 'MT5 EA — Woke Up To Profit', platform: 'Twitter/X',
+    prompt: 'Trader waking up to phone showing +$847 MT5 profit, no charts visible, calm bedroom, "zero manual trades" caption overlay, green glow' },
+  { id: 'r2', title: 'MT5 EA — Algorithm vs Human', platform: 'Twitter/X',
+    prompt: 'Split screen: exhausted trader at 3am watching charts (red) vs MT5 EA dashboard showing green trades running autonomously, dramatic contrast' },
+  { id: 'r3', title: 'MT5 EA — 24/7 While You Sleep', platform: 'YouTube',
+    prompt: 'Time-lapse: night sky → dawn while MT5 EA fires 20+ trades, profit counter growing in corner, "zero human input" subtitle, cinematic lighting' },
+  { id: 'r4', title: 'MT5 EA — Live P&L Dashboard', platform: 'Twitter/X',
+    prompt: 'MT5 live account showing 30-day results, each trade a green mark, cumulative P&L curve climbing, $9,400 total, authentic broker UI style' },
+  { id: 'r5', title: 'MT5 EA — Vacation Setup', platform: 'Instagram',
+    prompt: 'Person on beach with laptop showing MT5 account +$11,240, palm trees, relaxed pose, "been here 10 days, EA traded the whole time" overlay' },
+  { id: 'r6', title: 'MT5 EA — Manual vs EA Results', platform: 'YouTube',
+    prompt: 'Side by side 90-day comparison: manual trader (40% win rate, stressed) vs MT5 EA (67% win rate, passive), bar chart, clean infographic style' },
+  { id: 'r7', title: 'MT5 EA — Gold Is Moving', platform: 'Twitter/X',
+    prompt: 'Gold price chart with 2% daily move highlighted, MT5 EA auto-entry shown at bottom of move, profit arrow, "EA caught it while I slept" text' },
+
+  // ── AI PROMPT TOOLKIT ($29) — 2 slots ───────────────────────────────────
+  { id: 'r8', title: 'AI Prompt Kit — Fired My Copywriter', platform: 'Twitter/X',
+    prompt: 'Office scene: desk cleared, "copywriter fired" note, then split to AI generating perfect sales copy in 30 seconds, $29 price tag visible, bold contrast' },
+  { id: 'r9', title: 'AI Prompt Kit — 5x Content Output', platform: 'LinkedIn',
+    prompt: 'Dashboard: before = 5 content pieces/week (manual), after = 50 pieces/week (AI toolkit), same hours logged, dramatic improvement graph' },
+
+  // ── KELLY PRO CALCULATOR ($14.99) — 1 slot ──────────────────────────────
+  { id: 'r10', title: 'Kelly Pro — Position Sizing Tool', platform: 'Twitter/X',
+    prompt: 'Trading account before Kelly (blowing up) vs after (steady compounding), Kelly formula visualization, "the math that saves accounts" caption' },
 ]
 
 // ─── Global State ────────────────────────────────────────────────────────────
@@ -205,6 +198,17 @@ async function createCreativeRow(template: Template): Promise<string | null> {
     // Inject CTA into caption
     const captionWithCTA = injectMonetizationCTA(captionResult.caption, monetization)
 
+    // ── Revenue score for new rows ──────────────────────────────────────────
+    const baseRevenueScore = Math.round(captionResult.hookScore * 1)  // No conv yet
+    // Mark as winner candidate if hook >= 90
+    const isWinnerCandidate = captionResult.hookScore >= 90
+
+    // Derive product_key from template id
+    const productKey = template.id.startsWith('r1') || template.id.startsWith('r2') ||
+      template.id.startsWith('r3') || template.id.startsWith('r4') || template.id.startsWith('r5') ||
+      template.id.startsWith('r6') || template.id.startsWith('r7') ? 'mt5-gold' :
+      template.id.startsWith('r8') || template.id.startsWith('r9') ? 'ai-prompt' : 'kelly-pro'
+
     const { data, error } = await supabase
       .from('ugc_creatives')
       .insert({
@@ -212,8 +216,11 @@ async function createCreativeRow(template: Template): Promise<string | null> {
         title: template.title,
         platform: template.platform,
         tool: 'Kling',
-        status: 'queued', // Start as queued, not draft
-        views: 0, ctr: 0, roas: 0,
+        status: 'queued',
+        views: 0, clicks: 0, conversions: 0, ctr: 0, roas: 0,
+        revenue_usd: 0, revenue_score: baseRevenueScore,
+        is_winner: isWinnerCandidate,
+        product_key: productKey,
         caption: captionWithCTA,
         hooks: captionResult.hooks,
         hook_used: captionResult.hookUsed,
@@ -256,12 +263,16 @@ async function processNextQueued(onUpdate: (state: AutoRunnerState) => void): Pr
   }
   globalState.rateLimitedUntil = null
 
-  // Fetch oldest queued creative
+  // ── REVENUE MODE: Fetch highest revenue_score queued creative ────────────
+  // Priority: is_winner=true first, then by revenue_score DESC (hook * roas * conv)
+  // This ensures MT5 $97 creatives drain before lower-value ones.
   const { data: queued, error } = await supabase
     .from('ugc_creatives')
-    .select('id, title, generation_prompt, retry_count, monetization_url')
+    .select('id, title, generation_prompt, retry_count, monetization_url, revenue_score, is_winner, product_key')
     .eq('status', 'queued')
-    .order('created_at', { ascending: true })
+    .order('is_winner',    { ascending: false })   // winners first
+    .order('revenue_score', { ascending: false })  // then by score
+    .order('created_at',   { ascending: true })    // tiebreak: oldest first
     .limit(1)
     .maybeSingle()
 
@@ -517,12 +528,16 @@ async function postReadyCreatives(onUpdate: (state: AutoRunnerState) => void): P
   if (isProcessing) return  // don't conflict with active Kling job
 
   try {
+    // ── REVENUE MODE: Post highest-value ready creatives first ──────────────
+    // Order: winners first, then revenue_score DESC → MT5 $97 drains before $19
     const { data: readyItems } = await supabase
       .from('ugc_creatives')
-      .select('id, title, monetization_url')
+      .select('id, title, monetization_url, revenue_score, is_winner, product_key')
       .in('status', ['ready', 'ready_to_post'])
       .eq('platform_ready', true)
-      .order('updated_at', { ascending: true })
+      .order('is_winner',     { ascending: false })
+      .order('revenue_score', { ascending: false })
+      .order('updated_at',    { ascending: true })
       .limit(5)
 
     if (!readyItems || readyItems.length === 0) return
@@ -534,7 +549,9 @@ async function postReadyCreatives(onUpdate: (state: AutoRunnerState) => void): P
         const result = await postToTwitter(item.id)
         if (result.success) {
           globalState.todayPosted += 1
-          log(`Auto-posted: ${item.id.slice(0, 8)} → ${result.post_url}`, 'success')
+          const productLabel = (item as Record<string, unknown>).product_key ? ` [${(item as Record<string, unknown>).product_key}]` : ''
+          const winnerLabel  = (item as Record<string, unknown>).is_winner   ? ' ⭐' : ''
+          log(`Auto-posted${winnerLabel}${productLabel}: ${item.id.slice(0, 8)} → ${result.post_url}`, 'success')
 
           await supabase.from('ugc_creatives')
             .update({ status: 'posted', posted_at: new Date().toISOString() })
