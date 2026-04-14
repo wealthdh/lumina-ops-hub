@@ -244,7 +244,7 @@ function useRunPipeline() {
         }
       } catch {
         // Twitter completely unavailable â mark ready_to_post, DON'T crash
-        await updateCreativeStatus(creativeId, 'ready_to_post').catch(() => {})
+        await updateCreativeStatus(creativeId, 'ready_to_post').catch((e) => console.error('[ContentSwarm] Failed to persist ready_to_post - Supabase may be down:', e))
         onStep?.('ready_to_post', 'Twitter offline â creative ready in manual post queue')
       }
 
