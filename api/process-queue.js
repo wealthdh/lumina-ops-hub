@@ -81,15 +81,16 @@ export default async function handler(req, res) {
   // ── 3. Grab next queued creative ─────────────────────────────────────────
   const { data: queued, error: fetchErr } = await supabase
     .from('ugc_creatives')
-    .select('id, title, hook, script, monetization_url, hook_family_id')
+    .select('id, title, hooks, caption, monetization_url, hook_family')
     .eq('status', 'queued')
     .order('created_at', { ascending: true })
     .limit(1)
     .single()
 
   if (fetchErr || !queued) {
-    log('info', 'No queued creatives — nothing to do')
-    return res.status(200).json({ skipped: true, reason: 'queue_empty' })
+    if (fetchErr) log('warn', `Queued fetch error: ${fetchErr.message}`, { code: fetchErr.code })
+    else log('info', 'No queued creatives — nothing to do')
+    return res.status(200).json({ skipped: true, reason: fetchErr ? 'fetch_error' : 'queue_empty', error: fetchErr?.message })
   }
 
   log('info', `Processing creative ${queued.id}`, { title: queued.title })
@@ -122,7 +123,7 @@ export default async function handler(req, res) {
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model_name: 'kling-v1',
-              prompt: `${queued.hook || queued.title}. ${queued.script || ''}`.slice(0, 500),
+              prompt: `${queued.hooks || queued.title}. ${queued.caption || ''}`.slice(0, 500),
               duration: '5',
               aspect_ratio: '16:9',
               mode: 'std',
@@ -217,8 +218,8 @@ export default async function handler(req, res) {
   log('info', `Creative ${queued.id} → posted ✓`)
 
   // ── 9. Update hook family stats (non-blocking) ───────────────────────────
-  if (queued.hook_family_id) {
-    supabase.rpc('increment_hook_family_posts', { p_family_id: queued.hook_family_id })
+  if (queued.hook_family) {
+    supabase.rpc('increment_hook_family_posts', { p_family_id: queued.hook_family })
       .then(() => {}).catch(() => {})
   }
 
