@@ -46,6 +46,58 @@ interface Template {
   title: string
   platform: string
   prompt: string
+  hookFamily?: string   // maps to hook_families.id
+  productKey?: string   // explicit product override
+}
+
+interface HookFamily {
+  id: string
+  display_name: string
+  posting_weight: number
+  generation_weight: number
+  status: string
+}
+
+// ─── Family Weight Cache ──────────────────────────────────────────────────────
+let familyCache: HookFamily[] | null = null
+let familyCacheTs = 0
+const FAMILY_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+async function getActiveFamilies(): Promise<HookFamily[]> {
+  if (familyCache && Date.now() - familyCacheTs < FAMILY_CACHE_TTL) {
+    return familyCache
+  }
+  try {
+    const { data } = await supabase
+      .from('hook_families')
+      .select('id, display_name, posting_weight, generation_weight, status')
+      .gt('posting_weight', 0)
+      .order('rank', { ascending: true })
+    familyCache = (data || []) as HookFamily[]
+    familyCacheTs = Date.now()
+    return familyCache
+  } catch {
+    // Fall back to hard-coded defaults if DB unavailable
+    return [
+      { id: 'money-while-i-slept', display_name: 'Money While I Slept', posting_weight: 0.40, generation_weight: 0.45, status: 'active' },
+      { id: 'passive-income-system', display_name: 'Passive Income System', posting_weight: 0.30, generation_weight: 0.30, status: 'active' },
+      { id: 'swarm-content-machine', display_name: 'Swarm Content Machine', posting_weight: 0.15, generation_weight: 0.10, status: 'active' },
+      { id: 'i-fired-my-role', display_name: 'I Fired My Role', posting_weight: 0.10, generation_weight: 0.10, status: 'active' },
+      { id: 'kelly-risk-math', display_name: 'Kelly Risk Math', posting_weight: 0.05, generation_weight: 0.05, status: 'active' },
+    ]
+  }
+}
+
+// Weighted random pick: returns a family id based on weight
+function weightedPickFamily(families: HookFamily[], weightKey: 'posting_weight' | 'generation_weight'): string | null {
+  const total = families.reduce((s, f) => s + f[weightKey], 0)
+  if (total <= 0) return null
+  let rand = Math.random() * total
+  for (const f of families) {
+    rand -= f[weightKey]
+    if (rand <= 0) return f.id
+  }
+  return families[families.length - 1]?.id ?? null
 }
 
 interface RunnerOptions {
@@ -64,33 +116,70 @@ interface RunnerOptions {
 //   10% → Kelly Pro ($14.99)
 // Rotation: 7 MT5 slots, 2 AI/UGC slots, 1 Kelly slot per 10-template cycle.
 
+// ── REVENUE MODE: Templates are WINNER PATTERNS ONLY ─────────────────────────
+// Family allocation mirrors hook_families posting_weight:
+//   40% → money-while-i-slept (MT5 Gold $97)
+//   30% → passive-income-system (MT5 Gold $97)
+//   15% → swarm-content-machine (UGC Swarm $19 / AI Prompt $29)
+//   10% → i-fired-my-role (AI Prompt $29)
+//    5% → kelly-risk-math (Kelly Pro $14.99)
+// Templates per family are in separate buckets; pickTemplateForFamily() selects within bucket.
+
 const CREATIVE_TEMPLATES: Template[] = [
-  // ── MT5 GOLD SCALPER EA ($97) — 7 slots ─────────────────────────────────
-  { id: 'r1', title: 'MT5 EA — Woke Up To Profit', platform: 'Twitter/X',
+  // ── FAMILY: money-while-i-slept — MT5 Gold ($97) ─ 4 template prompts ───
+  { id: 'mwis-1', title: 'MT5 EA — Woke Up To Profit', platform: 'tiktok',
+    hookFamily: 'money-while-i-slept', productKey: 'mt5-gold',
     prompt: 'Trader waking up to phone showing +$847 MT5 profit, no charts visible, calm bedroom, "zero manual trades" caption overlay, green glow' },
-  { id: 'r2', title: 'MT5 EA — Algorithm vs Human', platform: 'Twitter/X',
-    prompt: 'Split screen: exhausted trader at 3am watching charts (red) vs MT5 EA dashboard showing green trades running autonomously, dramatic contrast' },
-  { id: 'r3', title: 'MT5 EA — 24/7 While You Sleep', platform: 'YouTube',
+  { id: 'mwis-2', title: 'MT5 EA — 24/7 While You Sleep', platform: 'tiktok',
+    hookFamily: 'money-while-i-slept', productKey: 'mt5-gold',
     prompt: 'Time-lapse: night sky → dawn while MT5 EA fires 20+ trades, profit counter growing in corner, "zero human input" subtitle, cinematic lighting' },
-  { id: 'r4', title: 'MT5 EA — Live P&L Dashboard', platform: 'Twitter/X',
-    prompt: 'MT5 live account showing 30-day results, each trade a green mark, cumulative P&L curve climbing, $9,400 total, authentic broker UI style' },
-  { id: 'r5', title: 'MT5 EA — Vacation Setup', platform: 'Instagram',
+  { id: 'mwis-3', title: 'MT5 EA — Vacation Profit Check', platform: 'instagram',
+    hookFamily: 'money-while-i-slept', productKey: 'mt5-gold',
     prompt: 'Person on beach with laptop showing MT5 account +$11,240, palm trees, relaxed pose, "been here 10 days, EA traded the whole time" overlay' },
-  { id: 'r6', title: 'MT5 EA — Manual vs EA Results', platform: 'YouTube',
-    prompt: 'Side by side 90-day comparison: manual trader (40% win rate, stressed) vs MT5 EA (67% win rate, passive), bar chart, clean infographic style' },
-  { id: 'r7', title: 'MT5 EA — Gold Is Moving', platform: 'Twitter/X',
+  { id: 'mwis-4', title: 'MT5 EA — Gold Is Moving', platform: 'tiktok',
+    hookFamily: 'money-while-i-slept', productKey: 'mt5-gold',
     prompt: 'Gold price chart with 2% daily move highlighted, MT5 EA auto-entry shown at bottom of move, profit arrow, "EA caught it while I slept" text' },
 
-  // ── AI PROMPT TOOLKIT ($29) — 2 slots ───────────────────────────────────
-  { id: 'r8', title: 'AI Prompt Kit — Fired My Copywriter', platform: 'Twitter/X',
-    prompt: 'Office scene: desk cleared, "copywriter fired" note, then split to AI generating perfect sales copy in 30 seconds, $29 price tag visible, bold contrast' },
-  { id: 'r9', title: 'AI Prompt Kit — 5x Content Output', platform: 'LinkedIn',
-    prompt: 'Dashboard: before = 5 content pieces/week (manual), after = 50 pieces/week (AI toolkit), same hours logged, dramatic improvement graph' },
+  // ── FAMILY: passive-income-system — MT5 Gold ($97) ─ 3 template prompts ─
+  { id: 'pis-1', title: 'MT5 EA — Passive Income Blueprint', platform: 'tiktok',
+    hookFamily: 'passive-income-system', productKey: 'mt5-gold',
+    prompt: 'Overhead view: neat desk with laptop showing MT5 passive income dashboard, coffee, no stress, "my system makes $278/day automatically" text overlay' },
+  { id: 'pis-2', title: 'MT5 EA — System Beats Side Hustles', platform: 'tiktok',
+    hookFamily: 'passive-income-system', productKey: 'mt5-gold',
+    prompt: 'Side by side: 6 failed side hustles (dropshipping, crypto manual, freelance) all red arrows vs MT5 EA passive system green arrow, $14,700/month callout' },
+  { id: 'pis-3', title: 'MT5 EA — 6 Month Compound Results', platform: 'instagram',
+    hookFamily: 'passive-income-system', productKey: 'mt5-gold',
+    prompt: 'Bar chart growing each month: $6k, $8.9k, $11.4k, $13.7k, $15.2k, $18.4k — MT5 Gold EA compounding results, clean data visualization style' },
 
-  // ── KELLY PRO CALCULATOR ($14.99) — 1 slot ──────────────────────────────
-  { id: 'r10', title: 'Kelly Pro — Position Sizing Tool', platform: 'Twitter/X',
-    prompt: 'Trading account before Kelly (blowing up) vs after (steady compounding), Kelly formula visualization, "the math that saves accounts" caption' },
+  // ── FAMILY: swarm-content-machine — UGC/AI ($19–$29) ─ 2 template prompts
+  { id: 'swm-1', title: 'UGC Swarm — 50 Posts From 1', platform: 'tiktok',
+    hookFamily: 'swarm-content-machine', productKey: 'ugc-swarm',
+    prompt: 'One piece of content exploding into 50 versions across platforms, AI swarm visualization, "I post 50 times without recording once" caption, dynamic motion' },
+  { id: 'swm-2', title: 'AI Content — Fire Your Creator', platform: 'tiktok',
+    hookFamily: 'swarm-content-machine', productKey: 'ai-prompt',
+    prompt: 'Office scene: desk cleared, "content creator fired" note, then split to AI generating perfect UGC in 30 seconds, bold contrast, price tag visible' },
+
+  // ── FAMILY: i-fired-my-role — AI Prompt ($29) ─ 2 template prompts ──────
+  { id: 'ifr-1', title: 'AI Prompt Kit — Fired My Copywriter', platform: 'tiktok',
+    hookFamily: 'i-fired-my-role', productKey: 'ai-prompt',
+    prompt: 'Dramatic desk clean-out scene, "fired my copywriter" note visible, then AI dashboard generating 10 sales emails in 8 seconds, "saved $4,800/month" overlay' },
+  { id: 'ifr-2', title: 'AI Prompt Kit — 5x Content Output', platform: 'instagram',
+    hookFamily: 'i-fired-my-role', productKey: 'ai-prompt',
+    prompt: 'Dashboard: before = 5 content pieces/week (manual, exhausted), after = 50 pieces/week (AI toolkit, relaxed), same hours logged, dramatic improvement graph' },
+
+  // ── FAMILY: kelly-risk-math — Kelly Pro ($14.99) ─ 1 template prompt ────
+  { id: 'krm-1', title: 'Kelly Pro — Position Sizing Saves Accounts', platform: 'tiktok',
+    hookFamily: 'kelly-risk-math', productKey: 'kelly-pro',
+    prompt: 'Trading account before Kelly (blowing up, red) vs after (steady compounding, green), Kelly formula visualization glowing, "the math that saves accounts" caption' },
 ]
+
+// Templates grouped by family for weighted selection
+const TEMPLATES_BY_FAMILY: Record<string, Template[]> = CREATIVE_TEMPLATES.reduce((acc, t) => {
+  const fam = t.hookFamily || 'money-while-i-slept'
+  acc[fam] = acc[fam] || []
+  acc[fam].push(t)
+  return acc
+}, {} as Record<string, Template[]>)
 
 // ─── Global State ────────────────────────────────────────────────────────────
 
@@ -174,9 +263,18 @@ async function refreshQueueCount(): Promise<void> {
   globalState.queuedCount = count || 0
 }
 
-// ─── Pick random template (avoiding already-queued titles today) ─────────────
+// ─── Pick template using family generation weights ───────────────────────────
 
-function pickTemplate(): Template {
+async function pickTemplate(): Promise<Template> {
+  try {
+    const families = await getActiveFamilies()
+    const familyId = weightedPickFamily(families, 'generation_weight')
+    if (familyId && TEMPLATES_BY_FAMILY[familyId]?.length) {
+      const bucket = TEMPLATES_BY_FAMILY[familyId]
+      return bucket[Math.floor(Math.random() * bucket.length)]
+    }
+  } catch { /* fall through */ }
+  // Fallback: random from all templates
   return CREATIVE_TEMPLATES[Math.floor(Math.random() * CREATIVE_TEMPLATES.length)]
 }
 
@@ -203,11 +301,14 @@ async function createCreativeRow(template: Template): Promise<string | null> {
     // Mark as winner candidate if hook >= 90
     const isWinnerCandidate = captionResult.hookScore >= 90
 
-    // Derive product_key from template id
-    const productKey = template.id.startsWith('r1') || template.id.startsWith('r2') ||
-      template.id.startsWith('r3') || template.id.startsWith('r4') || template.id.startsWith('r5') ||
-      template.id.startsWith('r6') || template.id.startsWith('r7') ? 'mt5-gold' :
-      template.id.startsWith('r8') || template.id.startsWith('r9') ? 'ai-prompt' : 'kelly-pro'
+    // Derive product_key: use template's explicit productKey or fall back to old logic
+    const productKey = template.productKey ||
+      (template.id.startsWith('r1') || template.id.startsWith('r2') ||
+       template.id.startsWith('r3') || template.id.startsWith('r4') || template.id.startsWith('r5') ||
+       template.id.startsWith('r6') || template.id.startsWith('r7') ? 'mt5-gold' :
+       template.id.startsWith('r8') || template.id.startsWith('r9') ? 'ai-prompt' : 'kelly-pro')
+
+    const hookFamily = template.hookFamily || null
 
     const { data, error } = await supabase
       .from('ugc_creatives')
@@ -221,6 +322,7 @@ async function createCreativeRow(template: Template): Promise<string | null> {
         revenue_usd: 0, revenue_score: baseRevenueScore,
         is_winner: isWinnerCandidate,
         product_key: productKey,
+        hook_family: hookFamily,
         caption: captionWithCTA,
         hooks: captionResult.hooks,
         hook_used: captionResult.hookUsed,
@@ -263,18 +365,51 @@ async function processNextQueued(onUpdate: (state: AutoRunnerState) => void): Pr
   }
   globalState.rateLimitedUntil = null
 
-  // ── REVENUE MODE: Fetch highest revenue_score queued creative ────────────
-  // Priority: is_winner=true first, then by revenue_score DESC (hook * roas * conv)
-  // This ensures MT5 $97 creatives drain before lower-value ones.
-  const { data: queued, error } = await supabase
-    .from('ugc_creatives')
-    .select('id, title, generation_prompt, retry_count, monetization_url, revenue_score, is_winner, product_key')
-    .eq('status', 'queued')
-    .order('is_winner',    { ascending: false })   // winners first
-    .order('revenue_score', { ascending: false })  // then by score
-    .order('created_at',   { ascending: true })    // tiebreak: oldest first
-    .limit(1)
-    .maybeSingle()
+  // ── FAMILY-WEIGHTED QUEUE SELECTION ─────────────────────────────────────
+  // 1. Fetch active families weighted by posting_weight
+  // 2. Pick a family via weighted random
+  // 3. Fetch the highest revenue_score queued creative from that family
+  // Falls back to global best-score if chosen family has no queued items
+  let selectedFamilyId: string | null = null
+  try {
+    const families = await getActiveFamilies()
+    selectedFamilyId = weightedPickFamily(families, 'posting_weight')
+  } catch { /* use global fallback */ }
+
+  // Try family-scoped fetch first, then fall back to global
+  let queued = null
+  let error = null
+
+  if (selectedFamilyId) {
+    const res = await supabase
+      .from('ugc_creatives')
+      .select('id, title, generation_prompt, retry_count, monetization_url, revenue_score, is_winner, product_key, hook_family')
+      .eq('status', 'queued')
+      .eq('hook_family', selectedFamilyId)
+      .order('is_winner',    { ascending: false })
+      .order('revenue_score', { ascending: false })
+      .order('created_at',   { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    queued = res.data
+    error = res.error
+  }
+
+  // Fallback: global best if family bucket is empty
+  if (!queued && !error) {
+    const res = await supabase
+      .from('ugc_creatives')
+      .select('id, title, generation_prompt, retry_count, monetization_url, revenue_score, is_winner, product_key, hook_family')
+      .eq('status', 'queued')
+      .not('hook_family', 'in', '("other","algo-beats-human")')
+      .order('is_winner',    { ascending: false })
+      .order('revenue_score', { ascending: false })
+      .order('created_at',   { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    queued = res.data
+    error = res.error
+  }
 
   if (error) { log(`Queue fetch error: ${error.message}`, 'error'); return false }
   if (!queued) return false // nothing to process
@@ -456,11 +591,11 @@ async function retryErroredCreatives(): Promise<void> {
 // ─── ENQUEUE PHASE: Add new creatives to queue ───────────────────────────────
 
 async function enqueueNewBatch(count: number, onUpdate: (state: AutoRunnerState) => void): Promise<void> {
-  log(`Enqueuing ${count} new creatives...`, 'info')
+  log(`Enqueuing ${count} new creatives (family-weighted)...`, 'info')
   let enqueued = 0
 
   for (let i = 0; i < count; i++) {
-    const template = pickTemplate()
+    const template = await pickTemplate()  // family-weighted async pick
     const id = await createCreativeRow(template)
     if (id) {
       globalState.todayGenerated += 1
@@ -528,17 +663,45 @@ async function postReadyCreatives(onUpdate: (state: AutoRunnerState) => void): P
   if (isProcessing) return  // don't conflict with active Kling job
 
   try {
-    // ── REVENUE MODE: Post highest-value ready creatives first ──────────────
-    // Order: winners first, then revenue_score DESC → MT5 $97 drains before $19
-    const { data: readyItems } = await supabase
+    // ── FAMILY-WEIGHTED READY POSTING ─────────────────────────────────────
+    // Pick a family by posting_weight, then fetch top ready creative from it.
+    // Repeat up to 5 times for up to 5 posts per rapid-post cycle.
+    let selectedFamilyId: string | null = null
+    try {
+      const families = await getActiveFamilies()
+      selectedFamilyId = weightedPickFamily(families, 'posting_weight')
+    } catch { /* fall through */ }
+
+    let readyQuery = supabase
       .from('ugc_creatives')
-      .select('id, title, monetization_url, revenue_score, is_winner, product_key')
+      .select('id, title, monetization_url, revenue_score, is_winner, product_key, hook_family')
       .in('status', ['ready', 'ready_to_post'])
       .eq('platform_ready', true)
       .order('is_winner',     { ascending: false })
       .order('revenue_score', { ascending: false })
       .order('updated_at',    { ascending: true })
       .limit(5)
+
+    // Prefer selected family but allow fallback
+    if (selectedFamilyId) {
+      readyQuery = readyQuery.eq('hook_family', selectedFamilyId)
+    }
+
+    let { data: readyItems } = await readyQuery
+
+    // Fallback: if no items in selected family, pull from global ready queue
+    if ((!readyItems || readyItems.length === 0) && selectedFamilyId) {
+      const { data: fallback } = await supabase
+        .from('ugc_creatives')
+        .select('id, title, monetization_url, revenue_score, is_winner, product_key, hook_family')
+        .in('status', ['ready', 'ready_to_post'])
+        .eq('platform_ready', true)
+        .order('is_winner',     { ascending: false })
+        .order('revenue_score', { ascending: false })
+        .order('updated_at',    { ascending: true })
+        .limit(5)
+      readyItems = fallback
+    }
 
     if (!readyItems || readyItems.length === 0) return
 
@@ -549,9 +712,11 @@ async function postReadyCreatives(onUpdate: (state: AutoRunnerState) => void): P
         const result = await postToTwitter(item.id)
         if (result.success) {
           globalState.todayPosted += 1
-          const productLabel = (item as Record<string, unknown>).product_key ? ` [${(item as Record<string, unknown>).product_key}]` : ''
-          const winnerLabel  = (item as Record<string, unknown>).is_winner   ? ' ⭐' : ''
-          log(`Auto-posted${winnerLabel}${productLabel}: ${item.id.slice(0, 8)} → ${result.post_url}`, 'success')
+          const r = item as Record<string, unknown>
+          const productLabel = r.product_key  ? ` [${r.product_key}]` : ''
+          const winnerLabel  = r.is_winner    ? ' ⭐' : ''
+          const familyLabel  = r.hook_family  ? ` {${(r.hook_family as string).split('-').map((w: string) => w[0]).join('')}}` : ''
+          log(`Auto-posted${winnerLabel}${productLabel}${familyLabel}: ${item.id.slice(0, 8)} → ${result.post_url}`, 'success')
 
           await supabase.from('ugc_creatives')
             .update({ status: 'posted', posted_at: new Date().toISOString() })

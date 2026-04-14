@@ -421,7 +421,7 @@ export default function GrowthDashboard() {
 
   const maxRev = Math.max(...creatives.map(c => c.revenue_usd), 0.01)
 
-  const styles: Record<string, React.CSSProperties> = {
+  const styles = {
     container: {
       background: '#0a0a0f',
       color: '#e2e8f0',
