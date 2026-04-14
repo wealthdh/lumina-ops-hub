@@ -66,14 +66,15 @@ export default async function handler(req, res) {
         .eq('id', creative_id)
     }
 
-    // Also log to a click_events table if it exists (non-blocking)
-    supabase.from('click_events').insert({
+    // Log to click_events — MUST be awaited before redirect; Vercel kills the
+    // function the instant res.redirect() fires, so fire-and-forget is lost.
+    await supabase.from('click_events').insert({
       creative_id,
       platform:    platform ?? 'unknown',
       clicked_at:  new Date().toISOString(),
       user_agent:  req.headers['user-agent'] ?? null,
       ip_hash:     null,  // privacy-safe: we don't store raw IPs
-    }).then(() => {}).catch(() => {})
+    }).catch((e) => console.warn('[track-click] click_events insert failed:', e?.message))
 
     // Redirect for GET (pixel-style tracking)
     if (req.method === 'GET' && redirect_url) {
