@@ -9,6 +9,7 @@ import TaxOptimizer from './TaxOptimizer'
 import EdgeHarmonizer from './EdgeHarmonizer'
 import SynergyBrain from './SynergyBrain'
 import ContentSwarm from './ContentSwarm'
+import GrowthDashboard from './GrowthDashboard'
 import MonteCarloSimulator from './MonteCarloSimulator'
 import TaskPrioritizer from './TaskPrioritizer'
 import CashOutModal from './CashOutModal'
@@ -378,6 +379,7 @@ export default function OpsHub({ activeTab }: OpsHubProps) {
         {activeTab === 'montecarlo'       && <MonteCarloSimulator />}
         {activeTab === 'tax-optimizer'    && <TaxOptimizer />}
         {activeTab === 'transactions'     && <TransactionHistory />}
+        {activeTab === 'growth'           && <GrowthDashboard />}
       </div>
     </div>
   )

@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Zap, Users, Shield, GitBranch,
   Video, TrendingUp, DollarSign, ChevronLeft, ChevronRight,
   Activity, Cpu, History, Sun, Moon, Bell,
-  Megaphone, Bot, BrainCircuit, GraduationCap, Landmark,
+  Megaphone, Bot, BrainCircuit, GraduationCap, Landmark, BarChart2,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useNotificationPermission } from '../hooks/useNotifications'
@@ -69,6 +69,7 @@ const NAV_ITEMS = [
   { id: 'digital-assets',  label: 'Digital Asset Store', icon: Shield },
   { id: 'synergy',        label: 'Synergy Brain',       icon: GitBranch },
   { id: 'content',        label: 'UGC Swarm',           icon: Video },
+  { id: 'growth',         label: 'Growth Dashboard',    icon: BarChart2 },
   { id: 'montecarlo',     label: 'Scenario Runner',     icon: TrendingUp },
   { id: 'money-flow',     label: 'Money Flow',          icon: DollarSign },
   { id: 'transactions',   label: 'Cash Out History',    icon: History },
