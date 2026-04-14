@@ -2,7 +2,7 @@
  * AI UGC + Content Swarm â EXECUTION MODE
  *
  * AUTONOMOUS REVENUE ENGINE:
- * - Auto-runs pipeline every 3 min (3 creatives per cycle)
+ * - Auto-runs pipeline every 15 min (3 creatives per cycle)
  * - Viral hooks + CTA rotation on every caption
  * - Daily goal tracking (50 generated, 30 ready/posted)
  * - Manual post queue for ready creatives
@@ -691,7 +691,7 @@ function AutoRunnerPanel() {
 
   const handleStart = useCallback(() => {
     const ctrl = startAutoRunner({
-      intervalMs: 180_000, // 3 minutes
+      intervalMs: 900_000, // 15 minutes (reduced from 3 min to respect Kling rate limits)
       dailyGoal: 50,
       onUpdate: (newState) => setState(newState),
     })
@@ -719,7 +719,7 @@ function AutoRunnerPanel() {
           )} />
           <span className="text-sm font-bold text-lumina-text">Autonomous Engine</span>
           <span className="text-[10px] font-mono text-lumina-dim">
-            {running ? 'RUNNING â 3 creatives every 3 min' : 'STOPPED'}
+            {running ? 'RUNNING â 3 creatives every 15 min' : 'STOPPED'}
           </span>
         </div>
         <button
