@@ -199,11 +199,25 @@ function GenerateModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
         {/* Done phase — show real document links */}
         {phase === 'done' && result && (
           <div className="space-y-4">
-            <div className="text-center text-lumina-success font-semibold text-sm mb-3">
-              ✅ Package ready — sent to {lead.email}
-            </div>
+            {/* Show real Stripe invoice status vs proposal-only status clearly */}
+            {result.invoiceUrl && result.invoiceUrl.includes('invoice.stripe.com') ? (
+              <div className="text-center text-lumina-success font-semibold text-sm mb-3">
+                ✅ Stripe invoice sent to {lead.email}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-center text-lumina-success font-semibold text-sm">
+                  📄 Proposal ready — no Stripe invoice yet
+                </div>
+                {!result.invoiceUrl?.includes('invoice.stripe.com') && result.message !== 'Stripe not configured' && (
+                  <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-400 text-center">
+                    ⚠️ Stripe not configured — edge function not deployed. Deploy to enable payment links.
+                  </div>
+                )}
+              </div>
+            )}
 
-            {result.message && (
+            {result.message && !result.invoiceUrl?.includes('invoice.stripe.com') && (
               <div className="bg-lumina-pulse/10 border border-lumina-pulse/20 rounded-lg p-3 text-xs text-lumina-pulse text-center">
                 {result.message}
               </div>
@@ -267,6 +281,38 @@ function GenerateModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
                 </div>
               )}
             </div>
+
+            {/* Immediate revenue — show live product payment links when no invoice yet */}
+            {result.invoiceUrl && !result.invoiceUrl.includes('invoice.stripe.com') && (
+              <div className="border border-lumina-gold/20 rounded-lg p-3 space-y-2">
+                <div className="flex items-center gap-2 text-xs text-lumina-gold font-semibold mb-1">
+                  <DollarSign size={12} />
+                  SEND THESE NOW — Live Stripe Products
+                </div>
+                {[
+                  { name: 'MT5 Gold Scalper EA',           price: '$97',    url: 'https://buy.stripe.com/5kQ7sNeAefk60KF0Ef1VK01' },
+                  { name: 'Polymarket Edge Scanner',        price: '$47',    url: 'https://buy.stripe.com/3cI28tfEic7U0KFbiT1VK02' },
+                  { name: 'AI Prompt Engineering Toolkit',  price: '$29',    url: 'https://buy.stripe.com/14AfZjajYdbY64ZcmX1VK03' },
+                  { name: 'Content Swarm Templates',        price: '$19',    url: 'https://buy.stripe.com/7sY00lfEi6NAbpjfz91VK04' },
+                  { name: 'Kelly Calculator Pro',           price: '$14.99', url: 'https://buy.stripe.com/14A00l9fUfk63WR4Uv1VK05' },
+                ].map(product => (
+                  <a
+                    key={product.url}
+                    href={product.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between gap-2 text-xs py-1.5 px-2 rounded bg-lumina-bg hover:bg-lumina-muted/20 transition-colors group"
+                  >
+                    <span className="text-lumina-text group-hover:text-lumina-gold transition-colors">{product.name}</span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="text-lumina-success font-mono font-semibold">{product.price}</span>
+                      <ExternalLink size={10} className="text-lumina-dim group-hover:text-lumina-gold" />
+                    </div>
+                  </a>
+                ))}
+                <p className="text-xs text-lumina-muted mt-2">Copy link → paste in email to {lead.name}. Works immediately.</p>
+              </div>
+            )}
 
             <button className="btn-ghost w-full text-sm" onClick={onClose}>Done</button>
           </div>
