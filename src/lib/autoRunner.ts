@@ -118,6 +118,7 @@ let globalState: AutoRunnerState = {
 }
 
 let tickIntervalId: ReturnType<typeof setInterval> | null = null
+let rapidPostIntervalId: ReturnType<typeof setInterval> | null = null
 let isProcessing = false // prevent concurrent processing
 let lastResetDate = new Date().toDateString()
 
@@ -493,16 +494,82 @@ async function tick(onUpdate: (state: AutoRunnerState) => void): Promise<void> {
     await enqueueNewBatch(3, onUpdate)
   }
 
-  // 5. Process ONE creative (no bursts)
+  // 5. Post existing READY creatives first (fast — no Kling needed)
+  await postReadyCreatives(onUpdate)
+
+  // 6. Process ONE queued creative via Kling (no bursts, respects rate limit)
   if (!isRateLimited()) {
     await processNextQueued(onUpdate)
   } else {
     const ms = rateLimitRemainingMs()
-    log(`Rate limited — skipping processing for ${Math.ceil(ms / 1000)}s`, 'warn')
+    log(`Rate limited — skipping Kling for ${Math.ceil(ms / 1000)}s (posting ready items unaffected)`, 'warn')
   }
 
   log(`Tick done: queued=${globalState.queuedCount} ready=${globalState.todayReady} posted=${globalState.todayPosted}`, 'success')
   onUpdate(globalState)
+}
+
+// ─── POST EXISTING READY CREATIVES ───────────────────────────────────────────
+// Drains up to 5 ready/ready_to_post creatives per tick via Twitter posting
+// Does NOT touch Kling — zero rate-limit risk
+
+async function postReadyCreatives(onUpdate: (state: AutoRunnerState) => void): Promise<void> {
+  if (isProcessing) return  // don't conflict with active Kling job
+
+  try {
+    const { data: readyItems } = await supabase
+      .from('ugc_creatives')
+      .select('id, title, monetization_url')
+      .in('status', ['ready', 'ready_to_post'])
+      .eq('platform_ready', true)
+      .order('updated_at', { ascending: true })
+      .limit(5)
+
+    if (!readyItems || readyItems.length === 0) return
+
+    log(`Attempting to post ${readyItems.length} ready creative(s) to Twitter`, 'info')
+
+    for (const item of readyItems) {
+      try {
+        const result = await postToTwitter(item.id)
+        if (result.success) {
+          globalState.todayPosted += 1
+          log(`Auto-posted: ${item.id.slice(0, 8)} → ${result.post_url}`, 'success')
+
+          await supabase.from('ugc_creatives')
+            .update({ status: 'posted', posted_at: new Date().toISOString() })
+            .eq('id', item.id)
+
+          // Income tracking
+          try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+              await supabase.from('income_entries').insert({
+                user_id: user.id,
+                source: 'UGC Content',
+                amount: 0,
+                description: `Auto-posted: ${item.title} → ${item.monetization_url || 'no link'}`,
+                entry_date: new Date().toISOString().slice(0, 10),
+                is_placeholder: true,
+                creative_id: item.id,
+              })
+            }
+          } catch { /* non-fatal */ }
+
+        } else {
+          log(`Twitter unavailable for ${item.id.slice(0, 8)}: ${result.error}`, 'warn')
+          break  // Stop trying if Twitter is down
+        }
+      } catch (err) {
+        log(`Post error ${item.id.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`, 'warn')
+        break
+      }
+    }
+
+    onUpdate(globalState)
+  } catch (err) {
+    log(`postReadyCreatives error: ${err instanceof Error ? err.message : String(err)}`, 'warn')
+  }
 }
 
 // ─── Controller ──────────────────────────────────────────────────────────────
@@ -538,7 +605,7 @@ export function startAutoRunner(opts: RunnerOptions): AutoRunnerController {
     log(`First tick error: ${err instanceof Error ? err.message : String(err)}`, 'error')
   )
 
-  // Schedule recurring ticks
+  // Schedule recurring ticks (Kling generation — every 15 min)
   tickIntervalId = setInterval(() => {
     if (globalState.running) {
       tick(opts.onUpdate).catch(err =>
@@ -547,10 +614,21 @@ export function startAutoRunner(opts: RunnerOptions): AutoRunnerController {
     }
   }, opts.intervalMs)
 
+  // Rapid-post interval — every 3 min, drains ready creatives via Twitter only
+  rapidPostIntervalId = setInterval(() => {
+    if (globalState.running) {
+      postReadyCreatives(opts.onUpdate).catch(err =>
+        log(`Rapid-post error: ${err instanceof Error ? err.message : String(err)}`, 'warn')
+      )
+      fixStuckCreatives().catch(() => {})
+    }
+  }, 180_000) // 3 minutes
+
   return {
     stop() {
       globalState.running = false
       if (tickIntervalId) { clearInterval(tickIntervalId); tickIntervalId = null }
+      if (rapidPostIntervalId) { clearInterval(rapidPostIntervalId); rapidPostIntervalId = null }
       log('Runner stopped', 'success')
       opts.onUpdate(globalState)
     },
