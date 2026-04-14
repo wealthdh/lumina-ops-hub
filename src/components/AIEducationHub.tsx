@@ -288,50 +288,20 @@ function SkillToIncomeRow({ skill }: { skill: Skill }) {
 }
 
 function WeeklyGoalTracker() {
-  const weeklyProgress = 12 // hours this week
-  const weeklyTarget = 5 // target hours
-  const progressPercent = Math.min((weeklyProgress / weeklyTarget) * 100, 100)
-  const streak = 4
-
   return (
     <div className="bg-lumina-card border border-lumina-border rounded-lg p-6">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h3 className="text-lg font-bold text-lumina-text">Weekly Learning Goal</h3>
-          <p className="text-sm text-lumina-dim mt-1">Stay consistent to build momentum</p>
+          <h3 className="text-lg font-bold text-lumina-text">Skills → Income Tracker</h3>
+          <p className="text-sm text-lumina-dim mt-1">Every skill you add unlocks a new revenue stream</p>
         </div>
-        <div className="flex items-center gap-2 bg-lumina-success/20 px-3 py-2 rounded-lg">
-          <Flame size={16} className="text-lumina-success" />
-          <span className="font-bold text-lumina-success">{streak} week streak</span>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-lumina-text font-semibold">This week: {weeklyProgress}h / {weeklyTarget}h target</p>
-          <p className="text-lumina-pulse font-bold">{Math.round(progressPercent)}%</p>
-        </div>
-        <div className="w-full bg-lumina-bg rounded-full h-3 overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-lumina-pulse to-lumina-gold transition-all duration-300"
-            style={{ width: `${progressPercent}%` }}
-          />
+        <div className="flex items-center gap-2 bg-lumina-pulse/20 px-3 py-2 rounded-lg">
+          <span className="font-bold text-lumina-pulse">Configure Courses</span>
         </div>
       </div>
-
-      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-        <div className="bg-lumina-bg rounded p-2">
-          <p className="text-xs text-lumina-muted uppercase">Mon</p>
-          <p className="text-lumina-success font-bold">2h</p>
-        </div>
-        <div className="bg-lumina-bg rounded p-2">
-          <p className="text-xs text-lumina-muted uppercase">Wed</p>
-          <p className="text-lumina-success font-bold">4h</p>
-        </div>
-        <div className="bg-lumina-bg rounded p-2">
-          <p className="text-xs text-lumina-muted uppercase">Fri</p>
-          <p className="text-lumina-success font-bold">6h</p>
-        </div>
+      <div className="bg-lumina-bg rounded-lg p-4 text-center text-lumina-muted text-sm">
+        Add courses to the <code className="text-lumina-pulse">courses</code> table in Supabase.
+        Progress and streak data will appear automatically once configured.
       </div>
     </div>
   )
