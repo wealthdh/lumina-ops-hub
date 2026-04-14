@@ -301,6 +301,24 @@ async function processNextQueued(onUpdate: (state: AutoRunnerState) => void): Pr
         await supabase.from('ugc_creatives')
           .update({ status: 'posted', posted_at: new Date().toISOString() })
           .eq('id', queued.id)
+        // ─── INCOME TRACKING: create placeholder income entry ──────────────
+        try {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            await supabase.from('income_entries').insert({
+              user_id: user.id,
+              source: 'UGC Content',
+              amount: 0,  // placeholder — updated when real conversion happens
+              description: `Posted: ${queued.title} → ${queued.monetization_url || 'no link'}`,
+              entry_date: new Date().toISOString().slice(0, 10),
+              is_placeholder: true,
+              creative_id: queued.id,
+            })
+            log(`Income entry created for ${queued.id.slice(0, 8)}`, 'info')
+          }
+        } catch (incomeErr) {
+          log(`Income tracking warn: ${incomeErr instanceof Error ? incomeErr.message : String(incomeErr)}`, 'warn')
+        }
       } else {
         log(`Twitter post failed (${result.error}) — keeping as ready`, 'warn')
       }
@@ -349,7 +367,7 @@ async function fixStuckCreatives(): Promise<void> {
 
     for (const row of stuck || []) {
       await updateCreativeStatus(row.id, 'ready')
-      log(`FAILSAFE: stuck creative ${row.id.slice(0, 8)} → ready`, 'success')
+      log(`FAILSAFE: stuck testing+video ${row.id.slice(0, 8)} → ready`, 'success')
     }
 
     // Testing without video, older than 3 minutes → back to queued if retry_count < 3
@@ -364,10 +382,37 @@ async function fixStuckCreatives(): Promise<void> {
     for (const row of stale || []) {
       const newStatus = (row.retry_count || 0) < 3 ? 'queued' : 'error'
       await updateCreativeStatus(row.id, newStatus, { error_reason: 'Processing timeout' })
-      log(`FAILSAFE: stale creative ${row.id.slice(0, 8)} → ${newStatus}`, newStatus === 'error' ? 'error' : 'warn')
+      log(`FAILSAFE: stale testing ${row.id.slice(0, 8)} → ${newStatus}`, newStatus === 'error' ? 'error' : 'warn')
     }
-  } catch {
-    // silently ignore failsafe errors
+
+    // ready_to_post → treat as ready (same display, no action needed)
+    const { data: rtp } = await supabase
+      .from('ugc_creatives')
+      .select('id')
+      .eq('status', 'ready_to_post')
+
+    for (const row of rtp || []) {
+      await updateCreativeStatus(row.id, 'ready')
+      log(`FAILSAFE: ready_to_post ${row.id.slice(0, 8)} → ready`, 'info')
+    }
+
+    // Self-heal: if isProcessing is stuck for > 10 min, reset it
+    // (catches crashes that left the lock engaged)
+    if (isProcessing && globalState.currentlyProcessing) {
+      const { data: proc } = await supabase
+        .from('ugc_creatives')
+        .select('status, updated_at')
+        .eq('id', globalState.currentlyProcessing)
+        .single()
+      if (proc && proc.status !== 'testing') {
+        log(`SELF-HEAL: isProcessing lock was stuck — resetting`, 'warn')
+        isProcessing = false
+        globalState.currentlyProcessing = null
+      }
+    }
+
+  } catch (err) {
+    log(`fixStuck error: ${err instanceof Error ? err.message : String(err)}`, 'warn')
   }
 }
 

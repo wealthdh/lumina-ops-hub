@@ -127,15 +127,53 @@ export function useJobEarningsSummary() {
   })
 }
 
-// ─── Total portfolio summary ───────────────────────────────────────────────────
+// ─── UGC / Creative earnings (entries with creative_id, no job_id) ────────────
+
+export function useUGCEarnings() {
+  return useQuery({
+    queryKey: ['ugc_earnings'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return { todayUsd: 0, weekUsd: 0, monthUsd: 0, allTimeUsd: 0, count: 0 }
+
+      const { data } = await supabase
+        .from('income_entries')
+        .select('amount, entry_date')
+        .eq('user_id', user.id)
+        .not('creative_id', 'is', null)
+
+      const now = new Date()
+      const todayStr  = now.toISOString().slice(0, 10)
+      const weekStart = new Date(now.getTime() -  7 * 86_400_000).toISOString().slice(0, 10)
+      const monthStr  = new Date(now.getTime() - 30 * 86_400_000).toISOString().slice(0, 10)
+
+      let todayUsd = 0, weekUsd = 0, monthUsd = 0, allTimeUsd = 0
+      for (const e of (data ?? []) as Array<{ amount: number; entry_date: string }>) {
+        const amt = Number(e.amount)
+        const d   = String(e.entry_date).slice(0, 10)
+        allTimeUsd += amt
+        if (d >= monthStr)  monthUsd += amt
+        if (d >= weekStart) weekUsd  += amt
+        if (d === todayStr) todayUsd += amt
+      }
+
+      return { todayUsd, weekUsd, monthUsd, allTimeUsd, count: (data ?? []).length }
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+}
+
+// ─── Total portfolio summary (jobs + UGC combined) ───────────────────────────
 
 export function usePortfolioEarnings() {
   const { data: summaries = [] } = useJobEarningsSummary()
+  const { data: ugc } = useUGCEarnings()
   return {
-    todayTotal:   summaries.reduce((s, e) => s + e.todayUsd,   0),
-    weekTotal:    summaries.reduce((s, e) => s + e.weekUsd,    0),
-    monthTotal:   summaries.reduce((s, e) => s + e.monthUsd,   0),
-    allTimeTotal: summaries.reduce((s, e) => s + e.allTimeUsd, 0),
+    todayTotal:   summaries.reduce((s, e) => s + e.todayUsd,   0) + (ugc?.todayUsd   ?? 0),
+    weekTotal:    summaries.reduce((s, e) => s + e.weekUsd,    0) + (ugc?.weekUsd    ?? 0),
+    monthTotal:   summaries.reduce((s, e) => s + e.monthUsd,   0) + (ugc?.monthUsd   ?? 0),
+    allTimeTotal: summaries.reduce((s, e) => s + e.allTimeUsd, 0) + (ugc?.allTimeUsd ?? 0),
   }
 }
 
