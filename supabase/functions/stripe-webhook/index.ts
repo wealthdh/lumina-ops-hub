@@ -59,12 +59,6 @@ async function verifyStripeSignature(body: string, header: string, secret: strin
   }
 }
 
-// ── Determine job ID from Stripe metadata ─────────────────────────────────────
-
-function resolveJobId(metadata: Record<string, string> | undefined, defaultJobId: string): string {
-  return metadata?.job_id ?? metadata?.jobId ?? metadata?.job ?? defaultJobId
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: CORS })
@@ -92,25 +86,15 @@ serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   )
 
-  const defaultJobId  = Deno.env.get('LUMINA_DEFAULT_JOB_ID')  ?? 'j05'  // AI Lead-to-Cash Funnel
   // Fallback: hardcoded owner UUID (wealthdh@gmail.com — confirmed from auth.users 2026-04-14)
   // Override via: supabase secrets set LUMINA_DEFAULT_USER_ID=<uuid> --project-ref rjtxkjozlhvnxkzmqffk
   const defaultUserId = Deno.env.get('LUMINA_DEFAULT_USER_ID') ?? '0ce62691-721c-4eba-bf3e-052731d9839b'
 
-  // Idempotency: ignore if already processed
-  const { data: existing } = await admin
-    .from('stripe_events')
-    .select('id, processed')
-    .eq('id', event.id)
-    .maybeSingle()
-
-  if (existing?.processed) {
-    return new Response(JSON.stringify({ received: true, status: 'already_processed' }), { headers: { ...CORS, 'Content-Type': 'application/json' } })
-  }
+  // Idempotency: stripe_events table does not yet exist in live DB.
+  // Dedup is handled downstream via income_entries.reference_id UNIQUE index (23505 = skip).
 
   const obj = event.data.object
   let amountUsd: number | null = null
-  let jobId     = defaultJobId
   let sourceRef = event.id
   let description: string | null = null
 
@@ -122,7 +106,6 @@ serve(async (req) => {
         const currency = String(obj.currency ?? 'usd').toLowerCase()
         if (currency !== 'usd') break   // only USD for now
         amountUsd   = amount / 100
-        jobId       = resolveJobId(obj.metadata as Record<string, string>, defaultJobId)
         sourceRef   = String(obj.id ?? event.id)
         description = String(obj.description ?? obj.statement_descriptor ?? 'Stripe charge')
         break
@@ -141,7 +124,6 @@ serve(async (req) => {
         const currency = String(obj.currency ?? 'usd').toLowerCase()
         if (currency !== 'usd') break
         amountUsd   = amount / 100
-        jobId       = resolveJobId(meta, defaultJobId)
         sourceRef   = String(obj.id ?? event.id)
         description = String(obj.description ?? 'Stripe payment')
         break
@@ -153,7 +135,6 @@ serve(async (req) => {
         const currency = String(obj.currency ?? 'usd').toLowerCase()
         if (currency !== 'usd') break
         amountUsd   = total / 100
-        jobId       = resolveJobId(obj.metadata as Record<string, string>, defaultJobId)
         sourceRef   = String(obj.id ?? event.id)
         description = `Invoice paid: ${String(obj.number ?? 'recurring')}`
         break
@@ -163,7 +144,6 @@ serve(async (req) => {
       case 'payout.paid': {
         const amount = Number(obj.amount)
         amountUsd   = amount / 100
-        jobId       = 'stripe_payout'
         sourceRef   = String(obj.id ?? event.id)
         description = `Stripe payout to ${String(obj.destination ?? 'bank')}`
         break
@@ -177,10 +157,13 @@ serve(async (req) => {
     // Insert income entry if we extracted a dollar amount
     // Column names: live DB uses income_schema_v2 (amount, reference_id, entry_date)
     // NOT the v1 names (amount_usd, source_ref, earned_at).
+    // job_id is UUID FK to ops_jobs — omit (null) since we have no job UUID at webhook time.
+    // stripe_events table does not yet exist in live DB — idempotency is handled via
+    // income_entries.reference_id UNIQUE index instead.
     if (amountUsd && amountUsd > 0 && defaultUserId) {
       const { error: insertError } = await admin.from('income_entries').insert({
         user_id:      defaultUserId,
-        job_id:       jobId,
+        // job_id omitted — nullable UUID FK, no lookup available at webhook time
         amount:       amountUsd,        // v2: 'amount' (was 'amount_usd' in v1)
         source:       'stripe',
         reference_id: sourceRef,        // v2: 'reference_id' (was 'source_ref' in v1)
@@ -188,23 +171,18 @@ serve(async (req) => {
         entry_date:   new Date().toISOString().slice(0, 10), // v2: DATE string (was 'earned_at' TIMESTAMPTZ)
       })
 
-      if (insertError) console.error('income_entries insert error:', insertError.message)
+      if (insertError) {
+        // 23505 = unique_violation on reference_id = duplicate event, safe to ignore
+        if (insertError.code !== '23505') {
+          console.error('income_entries insert error:', insertError.message, insertError.code)
+        } else {
+          console.log('Duplicate reference_id — event already processed:', sourceRef)
+        }
+      }
     }
 
-    // Log the event
-    await admin.from('stripe_events').upsert({
-      id:          event.id,
-      type:        event.type,
-      amount_usd:  amountUsd,
-      customer_id: String(obj.customer ?? ''),
-      job_id:      jobId,
-      payload:     event,
-      processed:   amountUsd !== null,
-      received_at: new Date().toISOString(),
-    })
-
     return new Response(
-      JSON.stringify({ received: true, amountUsd, jobId }),
+      JSON.stringify({ received: true, amountUsd }),
       { headers: { ...CORS, 'Content-Type': 'application/json' } },
     )
   } catch (err) {

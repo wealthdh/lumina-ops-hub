@@ -268,7 +268,7 @@ async function handleConversion({ stripeEventId, session, intentId, amountUsd, c
     .from('income_entries')
     .insert({
       user_id:      resolvedUserId,
-      job_id:       job?.id ?? 'unknown',
+      job_id:       job?.id ?? null,
       source:       'stripe',
       amount:       amountUsd,
       description:  `${productName ?? 'Product'} — ${buyerEmail}`,
