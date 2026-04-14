@@ -253,8 +253,9 @@ async function handleConversion({ stripeEventId, session, intentId, amountUsd, c
   if (!resolvedUserId) resolvedUserId = job?.user_id ?? null
 
   // If we still can't resolve user_id, fall back to LUMINA_DEFAULT_USER_ID env var
+  // then to the hardcoded owner UUID (wealthdh@gmail.com — retrieved from auth.users on 2026-04-14)
   if (!resolvedUserId) {
-    resolvedUserId = process.env.LUMINA_DEFAULT_USER_ID ?? null
+    resolvedUserId = process.env.LUMINA_DEFAULT_USER_ID ?? '0ce62691-721c-4eba-bf3e-052731d9839b'
   }
 
   if (!resolvedUserId) {

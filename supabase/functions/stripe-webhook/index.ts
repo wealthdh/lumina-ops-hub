@@ -93,7 +93,9 @@ serve(async (req) => {
   )
 
   const defaultJobId  = Deno.env.get('LUMINA_DEFAULT_JOB_ID')  ?? 'j05'  // AI Lead-to-Cash Funnel
-  const defaultUserId = Deno.env.get('LUMINA_DEFAULT_USER_ID') ?? ''
+  // Fallback: hardcoded owner UUID (wealthdh@gmail.com — confirmed from auth.users 2026-04-14)
+  // Override via: supabase secrets set LUMINA_DEFAULT_USER_ID=<uuid> --project-ref rjtxkjozlhvnxkzmqffk
+  const defaultUserId = Deno.env.get('LUMINA_DEFAULT_USER_ID') ?? '0ce62691-721c-4eba-bf3e-052731d9839b'
 
   // Idempotency: ignore if already processed
   const { data: existing } = await admin
