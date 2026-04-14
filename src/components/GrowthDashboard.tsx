@@ -306,6 +306,264 @@ function useRealProductRevenue(convEvents: ConversionEvent[]): ProductRevenue[] 
   return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
 }
 
+// ─── Decision Engine types ────────────────────────────────────────────────────
+
+interface HookFamilyRow {
+  id: string
+  display_name: string
+  total_creatives: number
+  posted_count: number
+  total_views: number
+  total_clicks: number
+  total_conversions: number
+  real_conversions: number
+  total_revenue: number
+  avg_ctr: number
+  cvr: number
+  avg_roas: number
+  avg_hook_score: number
+  revenue_per_click: number
+  posting_weight: number
+  generation_weight: number
+  business_score: number
+  status: string
+  rank: number
+  exploration_eligible: boolean
+}
+
+interface RunnerConfigRow {
+  use_real_metrics: boolean
+  exploration_floor: number
+  clone_threshold_conversions: number
+  max_family_weight: number
+  daily_generation_goal: number
+  reality_mode_enabled: boolean
+}
+
+export interface DecisionAction {
+  type: 'INCREASE_WEIGHT' | 'PAUSE_FAMILY' | 'CLONE_WINNERS' | 'ENFORCE_EXPLORATION' | 'REDUCE_WEIGHT'
+  target: string
+  display_name?: string
+  value?: number
+  multiplier?: number
+  reason: string
+  safe: boolean   // false = requires real conversions guard
+}
+
+interface DriftAlert {
+  severity: 'HIGH' | 'MEDIUM' | 'LOW'
+  issue: string
+  fix: string
+}
+
+// ─── New hooks ─────────────────────────────────────────────────────────────────
+
+function useHookFamilies() {
+  return useQuery<HookFamilyRow[]>({
+    queryKey: ['hook_families_full'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('hook_families')
+        .select('id, display_name, total_creatives, posted_count, total_views, total_clicks, total_conversions, real_conversions, total_revenue, avg_ctr, cvr, avg_roas, avg_hook_score, revenue_per_click, posting_weight, generation_weight, business_score, status, rank, exploration_eligible')
+        .order('rank', { ascending: true })
+      return (data || []).map(r => ({
+        ...r,
+        real_conversions:  Number(r.real_conversions  ?? 0),
+        business_score:    Number(r.business_score    ?? 0),
+        revenue_per_click: Number(r.revenue_per_click ?? 0),
+        avg_roas:          Number(r.avg_roas           ?? 0),
+        avg_ctr:           Number(r.avg_ctr            ?? 0),
+        cvr:               Number(r.cvr                ?? 0),
+        posting_weight:    Number(r.posting_weight     ?? 0),
+        generation_weight: Number(r.generation_weight  ?? 0),
+        exploration_eligible: r.exploration_eligible ?? true,
+      })) as HookFamilyRow[]
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+}
+
+function useRunnerConfig() {
+  return useQuery<RunnerConfigRow>({
+    queryKey: ['auto_runner_config'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('auto_runner_config')
+        .select('use_real_metrics, exploration_floor, clone_threshold_conversions, max_family_weight, daily_generation_goal, reality_mode_enabled')
+        .eq('id', 'singleton')
+        .single()
+      return {
+        use_real_metrics:            data?.use_real_metrics            ?? true,
+        exploration_floor:           Number(data?.exploration_floor)   ?? 0.25,
+        clone_threshold_conversions: data?.clone_threshold_conversions ?? 20,
+        max_family_weight:           Number(data?.max_family_weight)   ?? 0.60,
+        daily_generation_goal:       data?.daily_generation_goal       ?? 50,
+        reality_mode_enabled:        data?.reality_mode_enabled        ?? true,
+      } as RunnerConfigRow
+    },
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  })
+}
+
+// ─── Pure decision + drift functions ─────────────────────────────────────────
+
+function computeDecisionActions(
+  families: HookFamilyRow[],
+  cfg: RunnerConfigRow
+): DecisionAction[] {
+  const actions: DecisionAction[] = []
+  const threshold = cfg.clone_threshold_conversions
+
+  for (const f of families) {
+    const realConv  = f.real_conversions
+    const hasData   = realConv >= threshold
+    const cvr       = f.cvr
+    const roas      = f.avg_roas
+    const weight    = f.posting_weight
+    const views     = f.total_views
+    const revClick  = f.revenue_per_click
+
+    // INCREASE_WEIGHT — high CVR + enough real conversions + room to grow
+    if (hasData && cvr > 2.5 && weight < cfg.max_family_weight - 0.04) {
+      actions.push({
+        type: 'INCREASE_WEIGHT', target: f.id, display_name: f.display_name,
+        value: 0.05,
+        reason: `CVR ${cvr.toFixed(2)}% · ${realConv} real convs · $${revClick.toFixed(2)}/click`,
+        safe: true,
+      })
+    }
+
+    // PAUSE_FAMILY — poor CVR after significant exposure
+    if (views > 1500 && cvr < 1.5 && weight > 0 && f.id !== 'money-while-i-slept') {
+      actions.push({
+        type: 'PAUSE_FAMILY', target: f.id, display_name: f.display_name,
+        reason: `CVR ${cvr.toFixed(2)}% < 1.5% threshold after ${fmtN(views)} views`,
+        safe: true,
+      })
+    }
+
+    // CLONE_WINNERS — high ROAS but underweighted AND has ≥ threshold real conversions
+    if (hasData && roas > 2.0 && weight < 0.20) {
+      actions.push({
+        type: 'CLONE_WINNERS', target: f.id, display_name: f.display_name,
+        multiplier: 2,
+        reason: `ROAS ${roas.toFixed(2)}x · ${realConv} real convs — needs more creative volume`,
+        safe: true,
+      })
+    }
+
+    // REDUCE_WEIGHT — dominates too much
+    if (weight > cfg.max_family_weight) {
+      actions.push({
+        type: 'REDUCE_WEIGHT', target: f.id, display_name: f.display_name,
+        value: weight - cfg.max_family_weight,
+        reason: `Weight ${(weight * 100).toFixed(0)}% exceeds max ${(cfg.max_family_weight * 100).toFixed(0)}% — exploration risk`,
+        safe: true,
+      })
+    }
+  }
+
+  // ENFORCE_EXPLORATION — if top family dominates
+  const topFamily = families[0]
+  if (topFamily && topFamily.posting_weight > cfg.max_family_weight) {
+    actions.push({
+      type: 'ENFORCE_EXPLORATION', target: 'all',
+      value: cfg.exploration_floor,
+      reason: `${topFamily.display_name} at ${(topFamily.posting_weight * 100).toFixed(0)}% — exploration floor ${(cfg.exploration_floor * 100).toFixed(0)}% enforced`,
+      safe: true,
+    })
+  }
+
+  // Safe-guard: warn about families that have NO real conversions but high weight
+  for (const f of families) {
+    if (f.real_conversions === 0 && f.posting_weight >= 0.20 && cfg.use_real_metrics) {
+      actions.push({
+        type: 'REDUCE_WEIGHT', target: f.id, display_name: f.display_name,
+        value: 0.05,
+        reason: `0 real conversions yet weight=${(f.posting_weight*100).toFixed(0)}% — simulated ROAS not trusted`,
+        safe: false,
+      })
+    }
+  }
+
+  return actions
+}
+
+function computeDriftAlerts(
+  families: HookFamilyRow[],
+  cfg: RunnerConfigRow
+): DriftAlert[] {
+  const alerts: DriftAlert[] = []
+
+  // Exploration collapse
+  const topWeight = Math.max(...families.map(f => f.posting_weight), 0)
+  if (topWeight > 0.65) {
+    alerts.push({
+      severity: 'HIGH',
+      issue: `Exploration collapse detected — top family at ${(topWeight * 100).toFixed(0)}%`,
+      fix: `Set exploration_floor ≥ 0.25 so ${(0.25 * 100).toFixed(0)}% of posts go to under-tested families`,
+    })
+  }
+
+  // ROAS vs hook score divergence
+  for (const f of families) {
+    if (f.avg_hook_score > 88 && f.avg_roas < 0.5 && f.total_conversions > 5) {
+      alerts.push({
+        severity: 'MEDIUM',
+        issue: `Hook/ROAS divergence in "${f.display_name}" — hook ${f.avg_hook_score.toFixed(0)} but ROAS ${f.avg_roas.toFixed(2)}x`,
+        fix: 'Audit product-hook alignment and check landing page CVR',
+      })
+    }
+  }
+
+  // CTR drop — views rising but clicks flat (check top family)
+  const topFamily = families[0]
+  if (topFamily && topFamily.total_views > 5000 && topFamily.avg_ctr < 1.0) {
+    alerts.push({
+      severity: 'MEDIUM',
+      issue: `Low CTR (${topFamily.avg_ctr.toFixed(2)}%) in "${topFamily.display_name}" despite high view volume`,
+      fix: 'Rotate hook angles — audience may be fatiguing on current format',
+    })
+  }
+
+  // Simulated metrics being used for decisions
+  if (!cfg.use_real_metrics) {
+    alerts.push({
+      severity: 'HIGH',
+      issue: 'REALITY MODE OFF — family weights may be based on simulated revenue',
+      fix: 'Enable use_real_metrics so only Stripe-confirmed conversions affect system decisions',
+    })
+  }
+
+  // No real conversions anywhere — still in warm-up
+  const totalRealConv = families.reduce((s, f) => s + f.real_conversions, 0)
+  if (totalRealConv === 0) {
+    alerts.push({
+      severity: 'LOW',
+      issue: 'Zero real Stripe conversions yet — all scoring is pre-market estimate',
+      fix: 'System is in warm-up mode. Wait for first real sales before applying family weight changes.',
+    })
+  }
+
+  return alerts
+}
+
+// Projection: if we increase a family's weight by +10%, estimated revenue change
+function projectImpact(family: HookFamilyRow, deltaWeight: number, allRevenue: number) {
+  const currentShare  = family.posting_weight
+  const newShare      = Math.min(currentShare + deltaWeight, 0.80)
+  const revPerWeight  = currentShare > 0 ? family.total_revenue / currentShare : 0
+  const projRevenue   = revPerWeight * newShare
+  const deltaRevenue  = projRevenue - family.total_revenue
+  const projCTR       = family.avg_ctr * (newShare / (currentShare || 0.01)) * 0.7 // saturation discount
+  const projCVR       = family.cvr   // CVR is property of hook, not volume
+  const revenueShare  = allRevenue > 0 ? (projRevenue / allRevenue) * 100 : 0
+
+  return { deltaRevenue, projRevenue, projCTR: Math.min(projCTR, family.avg_ctr * 1.3), projCVR, revenueShare }
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const PLATFORM_ICONS: Record<string, string> = {
@@ -380,11 +638,14 @@ function Sparkline({ data, color = '#22c55e', height = 40 }: { data: number[]; c
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'hooks' | 'platforms' | 'products' | 'sales' | 'cadence'
+type Tab = 'overview' | 'hooks' | 'platforms' | 'products' | 'sales' | 'cadence' | 'engine'
 
 export default function GrowthDashboard() {
   const [tab, setTab] = useState<Tab>('overview')
   const [hookFilter, setHookFilter] = useState<'all' | 'viral' | 'good'>('viral')
+  const [applyingOpts, setApplyingOpts]   = useState(false)
+  const [applyStatus,  setApplyStatus]    = useState<string | null>(null)
+  const [impactFamily, setImpactFamily]   = useState<string | null>(null)
 
   const { data: creatives = [], isLoading: loadingC } = useTopCreatives(50)
   const { data: platforms = [] } = usePlatformStats()
@@ -394,6 +655,10 @@ export default function GrowthDashboard() {
   // ── Real Stripe conversion data ──────────────────────────────────────────
   const { data: convEvents = [], isLoading: loadingConv } = useConversionEvents(100)
   const realProductRevenue = useRealProductRevenue(convEvents)
+
+  // ── Decision Engine data ─────────────────────────────────────────────────
+  const { data: families = [], refetch: refetchFamilies } = useHookFamilies()
+  const { data: runnerCfg, refetch: refetchConfig } = useRunnerConfig()
 
   // Prefer real conversion_events data; fall back to ugc_creatives aggregates
   // Real revenue = sum of confirmed Stripe payments
@@ -420,6 +685,55 @@ export default function GrowthDashboard() {
   }).slice(0, 15)
 
   const maxRev = Math.max(...creatives.map(c => c.revenue_usd), 0.01)
+
+  // ── Decision Engine ───────────────────────────────────────────────────────
+  const cfg            = runnerCfg ?? { use_real_metrics: true, exploration_floor: 0.25, clone_threshold_conversions: 20, max_family_weight: 0.60, daily_generation_goal: 50, reality_mode_enabled: true }
+  const decisionActions = computeDecisionActions(families, cfg)
+  const driftAlerts     = computeDriftAlerts(families, cfg)
+  const impactFam       = families.find(f => f.id === impactFamily) ?? families[0] ?? null
+  const impactData      = impactFam ? projectImpact(impactFam, 0.10, allRevenue) : null
+  const safeActions     = decisionActions.filter(a => a.safe)
+  const riskActions     = decisionActions.filter(a => !a.safe)
+
+  // ── Apply optimizations handler ───────────────────────────────────────────
+  async function applyOptimizations() {
+    setApplyingOpts(true)
+    setApplyStatus(null)
+    try {
+      for (const action of safeActions) {
+        if (action.type === 'INCREASE_WEIGHT' && action.value !== undefined) {
+          // Normalise weights to ensure total ≤ 1
+          await supabase.from('hook_families')
+            .update({ posting_weight: Math.min((families.find(f => f.id === action.target)?.posting_weight ?? 0) + action.value, cfg.max_family_weight) })
+            .eq('id', action.target)
+        }
+        if (action.type === 'REDUCE_WEIGHT' && action.value !== undefined) {
+          const cur = families.find(f => f.id === action.target)?.posting_weight ?? 0
+          await supabase.from('hook_families')
+            .update({ posting_weight: Math.max(cur - action.value, 0.02) })
+            .eq('id', action.target)
+        }
+        if (action.type === 'PAUSE_FAMILY') {
+          await supabase.from('hook_families')
+            .update({ status: 'paused', posting_weight: 0, generation_weight: 0 })
+            .eq('id', action.target)
+        }
+        if (action.type === 'ENFORCE_EXPLORATION' && action.value !== undefined) {
+          await supabase.from('auto_runner_config')
+            .update({ exploration_floor: action.value, updated_at: new Date().toISOString() })
+            .eq('id', 'singleton')
+        }
+      }
+      // Renormalise posting weights so they sum ≤ 1
+      await supabase.rpc('update_hook_family_stats')
+      setApplyStatus(`✅ Applied ${safeActions.length} optimisation${safeActions.length !== 1 ? 's' : ''}. AutoRunner will pick up changes within 2 min.`)
+      await Promise.all([refetchFamilies(), refetchConfig()])
+    } catch (err) {
+      setApplyStatus(`❌ Error: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setApplyingOpts(false)
+    }
+  }
 
   const styles = {
     container: {
@@ -578,6 +892,13 @@ export default function GrowthDashboard() {
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
+        {/* Engine tab — highlighted */}
+        <button
+          style={{ ...styles.tab(tab === 'engine') as React.CSSProperties, color: tab === 'engine' ? '#a78bfa' : '#7c3aed', borderBottom: tab === 'engine' ? '2px solid #a78bfa' : '2px solid transparent' }}
+          onClick={() => setTab('engine')}
+        >
+          ⚡ Engine
+        </button>
       </div>
 
       {/* ── OVERVIEW TAB ── */}
@@ -969,6 +1290,294 @@ export default function GrowthDashboard() {
                     <td style={{ ...styles.td, color: '#f59e0b' }}>{d.posts > 0 ? fmt$(d.revenue / d.posts) : '—'}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* ── ENGINE TAB ── */}
+      {tab === 'engine' && (
+        <>
+          {/* ── Reality Mode Banner ─────────────────────────────────────── */}
+          <div style={{ ...styles.card, border: cfg.reality_mode_enabled ? '1px solid rgba(34,197,94,0.35)' : '1px solid rgba(239,68,68,0.35)', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const }}>
+              <div style={{ fontSize: 18 }}>{cfg.reality_mode_enabled ? '✅' : '⚠️'}</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: cfg.reality_mode_enabled ? '#22c55e' : '#ef4444' }}>
+                  Reality Mode: {cfg.reality_mode_enabled ? 'ON' : 'OFF'}
+                </div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                  {cfg.reality_mode_enabled
+                    ? 'Only Stripe-confirmed conversions affect family weights & clone decisions.'
+                    : 'WARNING: Simulated metrics may influence decisions. Enable reality mode.'}
+                </div>
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 16, fontSize: 12, color: '#64748b' }}>
+                <span>Explore floor: <strong style={{ color: '#a78bfa' }}>{(cfg.exploration_floor * 100).toFixed(0)}%</strong></span>
+                <span>Clone after: <strong style={{ color: '#f59e0b' }}>{cfg.clone_threshold_conversions} real convs</strong></span>
+                <span>Max weight: <strong style={{ color: '#06b6d4' }}>{(cfg.max_family_weight * 100).toFixed(0)}%</strong></span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Two-column layout: Decision Engine + Drift Alerts ─────────── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+
+            {/* DECISION ENGINE PANEL */}
+            <div style={{ ...styles.card, display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <span style={{ fontSize: 16 }}>🧠</span>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>Decision Engine</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#475569' }}>
+                  {decisionActions.length} action{decisionActions.length !== 1 ? 's' : ''} computed
+                </span>
+              </div>
+
+              {decisionActions.length === 0 ? (
+                <div style={{ color: '#64748b', fontSize: 13, padding: '12px 0' }}>
+                  ✓ System balanced — no actions needed right now.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+                  {decisionActions.map((action, i) => {
+                    const typeColors: Record<string, string> = {
+                      INCREASE_WEIGHT: '#22c55e', PAUSE_FAMILY: '#ef4444',
+                      CLONE_WINNERS: '#a78bfa',   ENFORCE_EXPLORATION: '#f59e0b',
+                      REDUCE_WEIGHT: '#f59e0b',
+                    }
+                    const typeIcons: Record<string, string> = {
+                      INCREASE_WEIGHT: '↑', PAUSE_FAMILY: '⏸',
+                      CLONE_WINNERS: '⎘',  ENFORCE_EXPLORATION: '🔀',
+                      REDUCE_WEIGHT: '↓',
+                    }
+                    const col = typeColors[action.type] ?? '#94a3b8'
+                    return (
+                      <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${col}33`, borderRadius: 8, padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ background: col + '22', color: col, borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>
+                            {typeIcons[action.type]} {action.type.replace(/_/g, ' ')}
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>
+                            {action.display_name ?? action.target}
+                          </span>
+                          {!action.safe && (
+                            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '1px 6px', borderRadius: 4 }}>
+                              ⚠ NEEDS REAL DATA
+                            </span>
+                          )}
+                          {action.value !== undefined && (
+                            <span style={{ marginLeft: action.safe ? 'auto' : 4, fontSize: 11, color: col }}>
+                              {action.type.includes('WEIGHT') ? `${action.value > 0 ? '+' : ''}${(action.value * 100).toFixed(0)}%` : ''}
+                              {action.multiplier !== undefined ? `×${action.multiplier}` : ''}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>{action.reason}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Apply button */}
+              <div style={{ marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 14 }}>
+                <button
+                  onClick={applyOptimizations}
+                  disabled={applyingOpts || safeActions.length === 0}
+                  style={{
+                    width: '100%', padding: '10px 0', borderRadius: 8, border: 'none', cursor: safeActions.length > 0 ? 'pointer' : 'not-allowed',
+                    background: safeActions.length > 0 ? 'linear-gradient(135deg, #22c55e, #059669)' : 'rgba(255,255,255,0.06)',
+                    color: safeActions.length > 0 ? '#fff' : '#475569', fontWeight: 700, fontSize: 13,
+                    opacity: applyingOpts ? 0.7 : 1,
+                  }}
+                >
+                  {applyingOpts ? '⏳ Applying…' : `🟢 Apply ${safeActions.length} Safe Optimisation${safeActions.length !== 1 ? 's' : ''}`}
+                </button>
+                {riskActions.length > 0 && (
+                  <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 8, textAlign: 'center' as const }}>
+                    ⚠ {riskActions.length} action{riskActions.length !== 1 ? 's' : ''} blocked — waiting for {cfg.clone_threshold_conversions} real conversions
+                  </div>
+                )}
+                {applyStatus && (
+                  <div style={{ fontSize: 12, marginTop: 8, color: applyStatus.startsWith('✅') ? '#22c55e' : '#ef4444', textAlign: 'center' as const }}>
+                    {applyStatus}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* DRIFT DETECTION PANEL */}
+            <div style={{ ...styles.card, display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <span style={{ fontSize: 16 }}>🚨</span>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>Drift Alerts</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11,
+                  color: driftAlerts.some(a => a.severity === 'HIGH') ? '#ef4444' : driftAlerts.some(a => a.severity === 'MEDIUM') ? '#f59e0b' : '#22c55e' }}>
+                  {driftAlerts.length === 0 ? '✓ No drift' : `${driftAlerts.filter(a => a.severity === 'HIGH').length} HIGH · ${driftAlerts.filter(a => a.severity === 'MEDIUM').length} MED`}
+                </span>
+              </div>
+              {driftAlerts.length === 0 ? (
+                <div style={{ color: '#22c55e', fontSize: 13 }}>✓ System stable — no drift detected.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+                  {driftAlerts.map((alert, i) => {
+                    const sevColor = alert.severity === 'HIGH' ? '#ef4444' : alert.severity === 'MEDIUM' ? '#f59e0b' : '#06b6d4'
+                    return (
+                      <div key={i} style={{ background: sevColor + '11', border: `1px solid ${sevColor}33`, borderRadius: 8, padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <span style={{ background: sevColor + '22', color: sevColor, borderRadius: 4, padding: '1px 7px', fontSize: 11, fontWeight: 700 }}>
+                            {alert.severity}
+                          </span>
+                          <span style={{ fontSize: 12, color: '#e2e8f0' }}>{alert.issue}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                          <span style={{ color: '#06b6d4' }}>Fix: </span>{alert.fix}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Scoring split legend */}
+              <div style={{ marginTop: 'auto', paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: 6, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 10, color: '#06b6d4', fontWeight: 700, marginBottom: 4 }}>CREATIVE SCORE (pre-market)</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>hook_score · engagement pred · CTR est</div>
+                  <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>→ posting priority only</div>
+                </div>
+                <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 6, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 10, color: '#22c55e', fontWeight: 700, marginBottom: 4 }}>BUSINESS SCORE (post-Stripe)</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>real convs · revenue · ROAS</div>
+                  <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>→ weights · cloning · allocation</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── IMPACT CHART ────────────────────────────────────────────────── */}
+          <div style={styles.card}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' as const }}>
+              <span style={{ fontSize: 16 }}>🔥</span>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>Impact Chart — +10% Weight Projection</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                {families.filter(f => f.posting_weight > 0).map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => setImpactFamily(f.id)}
+                    style={{
+                      padding: '3px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: 'none',
+                      background: impactFamily === f.id ? 'rgba(167,139,250,0.2)' : 'rgba(255,255,255,0.06)',
+                      color: impactFamily === f.id ? '#a78bfa' : '#94a3b8',
+                      outline: impactFamily === f.id ? '1px solid #a78bfa' : 'none',
+                    }}
+                  >
+                    {f.display_name.split(' ').slice(0, 2).join(' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {impactFam && impactData ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+                {[
+                  { label: 'Current Weight', cur: `${(impactFam.posting_weight * 100).toFixed(0)}%`, proj: `${((impactFam.posting_weight + 0.10) * 100).toFixed(0)}%`, color: '#a78bfa' },
+                  { label: 'Projected Revenue', cur: fmt$(impactFam.total_revenue), proj: fmt$(impactData.projRevenue), color: '#22c55e' },
+                  { label: 'Revenue Delta', cur: '—', proj: `${impactData.deltaRevenue >= 0 ? '+' : ''}${fmt$(impactData.deltaRevenue)}`, color: impactData.deltaRevenue >= 0 ? '#22c55e' : '#ef4444' },
+                  { label: 'Proj CTR', cur: `${impactFam.avg_ctr.toFixed(2)}%`, proj: `${impactData.projCTR.toFixed(2)}%`, color: '#06b6d4' },
+                  { label: 'CVR (unchanged)', cur: `${impactFam.cvr.toFixed(2)}%`, proj: `${impactData.projCVR.toFixed(2)}%`, color: '#f59e0b' },
+                  { label: 'Rev Share of Total', cur: allRevenue > 0 ? `${((impactFam.total_revenue / allRevenue) * 100).toFixed(1)}%` : '—', proj: `${impactData.revenueShare.toFixed(1)}%`, color: '#a78bfa' },
+                ].map(({ label, cur, proj, color }) => (
+                  <div key={label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>{label}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 14, color: '#475569' }}>{cur}</span>
+                      <span style={{ fontSize: 12, color: '#475569' }}>→</span>
+                      <span style={{ fontSize: 16, fontWeight: 700, color }}>{proj}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: '#64748b', fontSize: 13 }}>Select a family above to see the +10% weight projection.</div>
+            )}
+
+            {/* Family weight bar chart */}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Current weight distribution</div>
+              {families.map(f => {
+                const isSelected = f.id === impactFamily
+                return (
+                  <div key={f.id} style={{ marginBottom: 8, cursor: 'pointer' }} onClick={() => setImpactFamily(f.id)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{ fontSize: 12, color: isSelected ? '#a78bfa' : '#e2e8f0' }}>{f.display_name}</span>
+                      <span style={{ fontSize: 12, color: '#64748b' }}>
+                        {(f.posting_weight * 100).toFixed(0)}% weight · {f.real_conversions} real conv
+                        {f.real_conversions < cfg.clone_threshold_conversions && (
+                          <span style={{ color: '#f59e0b', marginLeft: 6, fontSize: 10 }}>⚠ warm-up</span>
+                        )}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                      <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 3, height: 8, overflow: 'hidden' }}>
+                        <div style={{ width: `${f.posting_weight * 100}%`, height: '100%', background: isSelected ? '#a78bfa' : f.status === 'paused' ? '#374151' : '#22c55e', borderRadius: 3, transition: 'width 0.5s' }} />
+                      </div>
+                      {isSelected && (
+                        <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 3, height: 8, overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min((f.posting_weight + 0.10) * 100, 100)}%`, height: '100%', background: 'rgba(167,139,250,0.4)', borderRadius: 3 }} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+              {impactFam && (
+                <div style={{ fontSize: 11, color: '#475569', marginTop: 6, textAlign: 'right' as const }}>
+                  Light bar = projected after +10% · Note: saturation discount applied to CTR projection
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── HOOK FAMILIES TABLE ──────────────────────────────────────────── */}
+          <div style={styles.card}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>📊 Hook Family Performance (Live DB)</div>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  {['Family', 'Rank', 'Creatives', 'Weight', 'CVR', 'ROAS', 'Real Conv', 'Revenue', 'Status'].map(h => (
+                    <th key={h} style={styles.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {families.map(f => {
+                  const statusCol = f.status === 'active' ? '#22c55e' : f.status === 'paused' ? '#ef4444' : '#f59e0b'
+                  const hasEnough = f.real_conversions >= cfg.clone_threshold_conversions
+                  return (
+                    <tr key={f.id}>
+                      <td style={{ ...styles.td, fontWeight: 600, color: '#e2e8f0', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                        {f.display_name}
+                      </td>
+                      <td style={{ ...styles.td, color: '#a78bfa' }}>#{f.rank}</td>
+                      <td style={styles.td}>{f.total_creatives}</td>
+                      <td style={{ ...styles.td, color: '#06b6d4' }}>{(f.posting_weight * 100).toFixed(0)}%</td>
+                      <td style={{ ...styles.td, color: f.cvr > 2.5 ? '#22c55e' : f.cvr > 1.5 ? '#f59e0b' : '#ef4444' }}>{f.cvr.toFixed(2)}%</td>
+                      <td style={{ ...styles.td, color: f.avg_roas > 2 ? '#22c55e' : '#94a3b8' }}>{f.avg_roas.toFixed(2)}x</td>
+                      <td style={{ ...styles.td, color: hasEnough ? '#22c55e' : '#f59e0b' }}>
+                        {f.real_conversions}
+                        {!hasEnough && <span style={{ fontSize: 9, color: '#f59e0b', marginLeft: 4 }}>/{cfg.clone_threshold_conversions}</span>}
+                      </td>
+                      <td style={{ ...styles.td, color: '#22c55e' }}>{fmt$(f.total_revenue)}</td>
+                      <td style={styles.td}>
+                        <span style={{ ...styles.badge(statusCol) as React.CSSProperties, fontSize: 10 }}>
+                          {f.status}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

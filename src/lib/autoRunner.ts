@@ -1,12 +1,14 @@
 /**
- * AUTONOMOUS PIPELINE ENGINE v2 — Queue-Based, Rate-Limit Aware
+ * AUTONOMOUS PIPELINE ENGINE v3 — Brain-Connected, Reality-Mode Aware
  *
  * Architecture:
  *  - Two-phase model: ENQUEUE phase (insert queued rows) + PROCESS phase (1 at a time)
  *  - Status flow: draft → queued → testing → ready → posted → error
+ *  - Config pulled live from auto_runner_config (DB is source of truth)
+ *  - Scoring split: creative_score (pre-market) ≠ business_score (post-Stripe only)
+ *  - Exploration floor: (1-floor)% winner families + floor% random exploration
+ *  - Clone guard: families only cloned after ≥ clone_threshold_conversions REAL conversions
  *  - On 429: re-queues creative, sets global backoff, waits before next tick
- *  - Retries: error creatives with retry_count < 3 are retried after delay
- *  - Monetization: every creative gets a product CTA injected before saving
  *  - No burst processing — max 1 concurrent Kling request at any time
  */
 
@@ -56,6 +58,64 @@ interface HookFamily {
   posting_weight: number
   generation_weight: number
   status: string
+  real_conversions?: number
+  exploration_eligible?: boolean
+}
+
+export interface RunnerConfig {
+  use_real_metrics: boolean
+  exploration_floor: number           // 0.25 = 25% slots go to exploration families
+  clone_threshold_conversions: number // 20 = only clone after 20 real conversions
+  max_family_weight: number           // 0.60 = cap any single family
+  daily_generation_goal: number
+  reality_mode_enabled: boolean
+}
+
+const DEFAULT_CONFIG: RunnerConfig = {
+  use_real_metrics: true,
+  exploration_floor: 0.25,
+  clone_threshold_conversions: 20,
+  max_family_weight: 0.60,
+  daily_generation_goal: 50,
+  reality_mode_enabled: true,
+}
+
+// ─── Config Cache ─────────────────────────────────────────────────────────────
+let configCache: RunnerConfig | null = null
+let configCacheTs = 0
+const CONFIG_CACHE_TTL = 2 * 60 * 1000 // 2 minutes — shorter so dashboard writes propagate fast
+
+export async function getRunnerConfig(): Promise<RunnerConfig> {
+  if (configCache && Date.now() - configCacheTs < CONFIG_CACHE_TTL) {
+    return configCache
+  }
+  try {
+    const { data } = await supabase
+      .from('auto_runner_config')
+      .select('*')
+      .eq('id', 'singleton')
+      .single()
+    if (data) {
+      configCache = {
+        use_real_metrics:            data.use_real_metrics            ?? DEFAULT_CONFIG.use_real_metrics,
+        exploration_floor:           Number(data.exploration_floor)   ?? DEFAULT_CONFIG.exploration_floor,
+        clone_threshold_conversions: data.clone_threshold_conversions ?? DEFAULT_CONFIG.clone_threshold_conversions,
+        max_family_weight:           Number(data.max_family_weight)   ?? DEFAULT_CONFIG.max_family_weight,
+        daily_generation_goal:       data.daily_generation_goal       ?? DEFAULT_CONFIG.daily_generation_goal,
+        reality_mode_enabled:        data.reality_mode_enabled        ?? DEFAULT_CONFIG.reality_mode_enabled,
+      }
+      configCacheTs = Date.now()
+      return configCache
+    }
+  } catch { /* fall through */ }
+  return DEFAULT_CONFIG
+}
+
+export function invalidateConfigCache(): void {
+  configCache = null
+  configCacheTs = 0
+  familyCache = null
+  familyCacheTs = 0
 }
 
 // ─── Family Weight Cache ──────────────────────────────────────────────────────
@@ -70,7 +130,7 @@ async function getActiveFamilies(): Promise<HookFamily[]> {
   try {
     const { data } = await supabase
       .from('hook_families')
-      .select('id, display_name, posting_weight, generation_weight, status')
+      .select('id, display_name, posting_weight, generation_weight, status, real_conversions, exploration_eligible')
       .gt('posting_weight', 0)
       .order('rank', { ascending: true })
     familyCache = (data || []) as HookFamily[]
@@ -79,22 +139,48 @@ async function getActiveFamilies(): Promise<HookFamily[]> {
   } catch {
     // Fall back to hard-coded defaults if DB unavailable
     return [
-      { id: 'money-while-i-slept', display_name: 'Money While I Slept', posting_weight: 0.40, generation_weight: 0.45, status: 'active' },
+      { id: 'money-while-i-slept',   display_name: 'Money While I Slept',   posting_weight: 0.40, generation_weight: 0.45, status: 'active' },
       { id: 'passive-income-system', display_name: 'Passive Income System', posting_weight: 0.30, generation_weight: 0.30, status: 'active' },
       { id: 'swarm-content-machine', display_name: 'Swarm Content Machine', posting_weight: 0.15, generation_weight: 0.10, status: 'active' },
-      { id: 'i-fired-my-role', display_name: 'I Fired My Role', posting_weight: 0.10, generation_weight: 0.10, status: 'active' },
-      { id: 'kelly-risk-math', display_name: 'Kelly Risk Math', posting_weight: 0.05, generation_weight: 0.05, status: 'active' },
+      { id: 'i-fired-my-role',       display_name: 'I Fired My Role',       posting_weight: 0.10, generation_weight: 0.10, status: 'active' },
+      { id: 'kelly-risk-math',       display_name: 'Kelly Risk Math',       posting_weight: 0.05, generation_weight: 0.05, status: 'active' },
     ]
   }
 }
 
+// ─── Exploration-aware family picker ─────────────────────────────────────────
+// With probability = exploration_floor → pick any exploration_eligible family uniformly.
+// With probability = (1 - exploration_floor) → pick by weight from winner families.
+async function pickFamilyWithExploration(
+  weightKey: 'posting_weight' | 'generation_weight'
+): Promise<string | null> {
+  const cfg     = await getRunnerConfig()
+  const families = await getActiveFamilies()
+  if (families.length === 0) return null
+
+  const roll = Math.random()
+  if (roll < cfg.exploration_floor) {
+    // Exploration slot: pick uniformly from all exploration_eligible families
+    const pool = families.filter(f => f.exploration_eligible !== false)
+    if (pool.length === 0) return weightedPickFamily(families, weightKey)
+    return pool[Math.floor(Math.random() * pool.length)].id
+  }
+
+  // Exploit slot: pick by weight (capped at max_family_weight)
+  const capped = families.map(f => ({
+    ...f,
+    [weightKey]: Math.min(f[weightKey], cfg.max_family_weight),
+  }))
+  return weightedPickFamily(capped, weightKey)
+}
+
 // Weighted random pick: returns a family id based on weight
 function weightedPickFamily(families: HookFamily[], weightKey: 'posting_weight' | 'generation_weight'): string | null {
-  const total = families.reduce((s, f) => s + f[weightKey], 0)
+  const total = families.reduce((s, f) => s + (f[weightKey] as number), 0)
   if (total <= 0) return null
   let rand = Math.random() * total
   for (const f of families) {
-    rand -= f[weightKey]
+    rand -= (f[weightKey] as number)
     if (rand <= 0) return f.id
   }
   return families[families.length - 1]?.id ?? null
@@ -263,18 +349,22 @@ async function refreshQueueCount(): Promise<void> {
   globalState.queuedCount = count || 0
 }
 
-// ─── Pick template using family generation weights ───────────────────────────
+// ─── Pick template: exploration-aware, family generation weights ─────────────
 
 async function pickTemplate(): Promise<Template> {
   try {
-    const families = await getActiveFamilies()
-    const familyId = weightedPickFamily(families, 'generation_weight')
+    const familyId = await pickFamilyWithExploration('generation_weight')
     if (familyId && TEMPLATES_BY_FAMILY[familyId]?.length) {
       const bucket = TEMPLATES_BY_FAMILY[familyId]
       return bucket[Math.floor(Math.random() * bucket.length)]
     }
+    // Family has no template bucket — pick from all templates weighted by family
+    if (familyId) {
+      const fallback = CREATIVE_TEMPLATES.filter(t => !t.hookFamily || t.hookFamily === familyId)
+      if (fallback.length) return fallback[Math.floor(Math.random() * fallback.length)]
+    }
   } catch { /* fall through */ }
-  // Fallback: random from all templates
+  // Final fallback: random from all templates
   return CREATIVE_TEMPLATES[Math.floor(Math.random() * CREATIVE_TEMPLATES.length)]
 }
 
@@ -365,15 +455,13 @@ async function processNextQueued(onUpdate: (state: AutoRunnerState) => void): Pr
   }
   globalState.rateLimitedUntil = null
 
-  // ── FAMILY-WEIGHTED QUEUE SELECTION ─────────────────────────────────────
-  // 1. Fetch active families weighted by posting_weight
-  // 2. Pick a family via weighted random
-  // 3. Fetch the highest revenue_score queued creative from that family
-  // Falls back to global best-score if chosen family has no queued items
+  // ── EXPLORATION-AWARE FAMILY QUEUE SELECTION ─────────────────────────────
+  // Uses exploration_floor from auto_runner_config:
+  //   (1-floor)% → pick from top families by weight
+  //   floor%     → pick any exploration_eligible family (avoids exploitation collapse)
   let selectedFamilyId: string | null = null
   try {
-    const families = await getActiveFamilies()
-    selectedFamilyId = weightedPickFamily(families, 'posting_weight')
+    selectedFamilyId = await pickFamilyWithExploration('posting_weight')
   } catch { /* use global fallback */ }
 
   // Try family-scoped fetch first, then fall back to global
@@ -636,6 +724,12 @@ async function tick(onUpdate: (state: AutoRunnerState) => void): Promise<void> {
   onUpdate(globalState)
 
   // 4. If queue is empty and daily goal not reached, enqueue batch
+  // Pull daily goal live from DB config so dashboard changes take effect immediately
+  try {
+    const cfg = await getRunnerConfig()
+    globalState.dailyGoal = cfg.daily_generation_goal
+  } catch { /* keep existing */ }
+
   if (globalState.queuedCount === 0 && globalState.todayPosted < globalState.dailyGoal) {
     await enqueueNewBatch(3, onUpdate)
   }
@@ -663,13 +757,11 @@ async function postReadyCreatives(onUpdate: (state: AutoRunnerState) => void): P
   if (isProcessing) return  // don't conflict with active Kling job
 
   try {
-    // ── FAMILY-WEIGHTED READY POSTING ─────────────────────────────────────
-    // Pick a family by posting_weight, then fetch top ready creative from it.
-    // Repeat up to 5 times for up to 5 posts per rapid-post cycle.
+    // ── EXPLORATION-AWARE READY POSTING ──────────────────────────────────
+    // Same exploration_floor logic as processNextQueued — keeps post distribution honest.
     let selectedFamilyId: string | null = null
     try {
-      const families = await getActiveFamilies()
-      selectedFamilyId = weightedPickFamily(families, 'posting_weight')
+      selectedFamilyId = await pickFamilyWithExploration('posting_weight')
     } catch { /* fall through */ }
 
     let readyQuery = supabase
