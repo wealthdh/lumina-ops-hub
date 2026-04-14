@@ -338,6 +338,27 @@ interface RunnerConfigRow {
   max_family_weight: number
   daily_generation_goal: number
   reality_mode_enabled: boolean
+  // optimizer fields
+  auto_optimize_enabled: boolean
+  optimize_interval_hours: number
+  max_weight_delta_per_cycle: number
+  ucb1_exploration_constant: number
+  min_views_before_adjust: number
+  optimizer_cycle_count: number
+  last_optimized_at: string | null
+}
+
+interface OptimizerLogEntry {
+  id: string
+  run_at: string
+  triggered_by: string
+  cycle_number: number
+  actions_taken: number
+  skipped_reason: string | null
+  total_reward: number
+  exploration_pct: number
+  payload: Record<string, unknown>
+  duration_ms: number | null
 }
 
 export interface DecisionAction {
@@ -390,7 +411,7 @@ function useRunnerConfig() {
     queryFn: async () => {
       const { data } = await supabase
         .from('auto_runner_config')
-        .select('use_real_metrics, exploration_floor, clone_threshold_conversions, max_family_weight, daily_generation_goal, reality_mode_enabled')
+        .select('*')
         .eq('id', 'singleton')
         .single()
       return {
@@ -400,7 +421,31 @@ function useRunnerConfig() {
         max_family_weight:           Number(data?.max_family_weight)   ?? 0.60,
         daily_generation_goal:       data?.daily_generation_goal       ?? 50,
         reality_mode_enabled:        data?.reality_mode_enabled        ?? true,
+        auto_optimize_enabled:       data?.auto_optimize_enabled       ?? false,
+        optimize_interval_hours:     data?.optimize_interval_hours     ?? 4,
+        max_weight_delta_per_cycle:  Number(data?.max_weight_delta_per_cycle) ?? 0.05,
+        ucb1_exploration_constant:   Number(data?.ucb1_exploration_constant)  ?? 0.50,
+        min_views_before_adjust:     data?.min_views_before_adjust     ?? 500,
+        optimizer_cycle_count:       data?.optimizer_cycle_count       ?? 0,
+        last_optimized_at:           data?.last_optimized_at           ?? null,
       } as RunnerConfigRow
+    },
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  })
+}
+
+function useOptimizerLog(limit = 20) {
+  return useQuery<OptimizerLogEntry[]>({
+    queryKey: ['optimizer_log', limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('optimizer_log')
+        .select('id, run_at, triggered_by, cycle_number, actions_taken, skipped_reason, total_reward, exploration_pct, payload, duration_ms')
+        .order('run_at', { ascending: false })
+        .limit(limit)
+      if (error) return []
+      return (data ?? []) as OptimizerLogEntry[]
     },
     staleTime: 30_000,
     refetchInterval: 30_000,
@@ -658,7 +703,10 @@ export default function GrowthDashboard() {
 
   // ── Decision Engine data ─────────────────────────────────────────────────
   const { data: families = [], refetch: refetchFamilies } = useHookFamilies()
-  const { data: runnerCfg, refetch: refetchConfig } = useRunnerConfig()
+  const { data: runnerCfg, refetch: refetchConfig }       = useRunnerConfig()
+  const { data: optimizerLog = [], refetch: refetchLog }  = useOptimizerLog(20)
+  const [runningOptimizer, setRunningOptimizer]           = useState(false)
+  const [optimizerStatus,  setOptimizerStatus]            = useState<string | null>(null)
 
   // Prefer real conversion_events data; fall back to ugc_creatives aggregates
   // Real revenue = sum of confirmed Stripe payments
@@ -687,7 +735,7 @@ export default function GrowthDashboard() {
   const maxRev = Math.max(...creatives.map(c => c.revenue_usd), 0.01)
 
   // ── Decision Engine ───────────────────────────────────────────────────────
-  const cfg            = runnerCfg ?? { use_real_metrics: true, exploration_floor: 0.25, clone_threshold_conversions: 20, max_family_weight: 0.60, daily_generation_goal: 50, reality_mode_enabled: true }
+  const cfg: RunnerConfigRow = runnerCfg ?? { use_real_metrics: true, exploration_floor: 0.25, clone_threshold_conversions: 20, max_family_weight: 0.60, daily_generation_goal: 50, reality_mode_enabled: true, auto_optimize_enabled: false, optimize_interval_hours: 4, max_weight_delta_per_cycle: 0.05, ucb1_exploration_constant: 1.41, min_views_before_adjust: 100, optimizer_cycle_count: 0, last_optimized_at: null }
   const decisionActions = computeDecisionActions(families, cfg)
   const driftAlerts     = computeDriftAlerts(families, cfg)
   const impactFam       = families.find(f => f.id === impactFamily) ?? families[0] ?? null
@@ -733,6 +781,45 @@ export default function GrowthDashboard() {
     } finally {
       setApplyingOpts(false)
     }
+  }
+
+  // ── Trigger a manual optimizer run ───────────────────────────────────────
+  async function runOptimizerNow() {
+    setRunningOptimizer(true)
+    setOptimizerStatus(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auto-optimizer`
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'x-triggered-by': 'manual',
+        },
+        body: '{}',
+      })
+      const result = await resp.json() as Record<string, unknown>
+      if (result.success) {
+        setOptimizerStatus(`✅ Cycle ${result.cycle}: ${result.actions_taken} updates · ${typeof result.exploration_pct === 'number' ? result.exploration_pct.toFixed(1) : '0'}% exploration · ${result.duration_ms}ms`)
+      } else if (result.skipped) {
+        setOptimizerStatus(`⏭ Skipped: ${result.reason}`)
+      } else {
+        setOptimizerStatus(`❌ Error: ${JSON.stringify(result).slice(0, 100)}`)
+      }
+      await Promise.all([refetchFamilies(), refetchConfig(), refetchLog()])
+    } catch (err) {
+      setOptimizerStatus(`❌ ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setRunningOptimizer(false)
+    }
+  }
+
+  async function toggleAutoOptimize(enabled: boolean) {
+    await supabase.from('auto_runner_config')
+      .update({ auto_optimize_enabled: enabled, updated_at: new Date().toISOString() })
+      .eq('id', 'singleton')
+    await refetchConfig()
   }
 
   const styles = {
@@ -1538,6 +1625,225 @@ export default function GrowthDashboard() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* ── CLOSED-LOOP OPTIMIZER CONTROLLER ───────────────────────────── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+
+            {/* Left: controls */}
+            <div style={styles.card}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <span style={{ fontSize: 16 }}>⚙️</span>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>Closed-Loop Controller</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11,
+                  color: cfg.auto_optimize_enabled ? '#22c55e' : '#64748b' }}>
+                  {cfg.auto_optimize_enabled ? '● AUTONOMOUS' : '○ MANUAL'}
+                </span>
+              </div>
+
+              {/* Enable / Disable toggle */}
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Auto-Optimize</div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      UCB1 rebalancing every {cfg.optimize_interval_hours}h via Edge Function
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => toggleAutoOptimize(!cfg.auto_optimize_enabled)}
+                    style={{
+                      width: 52, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                      background: cfg.auto_optimize_enabled ? '#22c55e' : 'rgba(255,255,255,0.12)',
+                      position: 'relative' as const, transition: 'background 0.2s',
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute' as const, top: 4,
+                      left: cfg.auto_optimize_enabled ? 28 : 4,
+                      width: 20, height: 20, borderRadius: '50%',
+                      background: '#fff', transition: 'left 0.2s',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                    }} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Stat pills */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                {[
+                  { label: 'Cycles Run',    value: String(cfg.optimizer_cycle_count), color: '#a78bfa' },
+                  { label: 'Max Δ/Cycle',   value: `${(cfg.max_weight_delta_per_cycle * 100).toFixed(0)}%`, color: '#06b6d4' },
+                  { label: 'UCB1 C',        value: String(cfg.ucb1_exploration_constant), color: '#f59e0b' },
+                  { label: 'Min Views',     value: fmtN(cfg.min_views_before_adjust), color: '#94a3b8' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 6, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 10, color: '#64748b' }}>{label}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color, marginTop: 2 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Last run */}
+              <div style={{ fontSize: 12, color: '#475569', marginBottom: 12 }}>
+                Last run: {cfg.last_optimized_at
+                  ? new Date(cfg.last_optimized_at).toLocaleString()
+                  : 'Never'}
+                {cfg.last_optimized_at && cfg.optimize_interval_hours && (
+                  <span style={{ marginLeft: 8, color: '#22c55e' }}>
+                    · Next: {new Date(new Date(cfg.last_optimized_at).getTime() + cfg.optimize_interval_hours * 3_600_000).toLocaleString()}
+                  </span>
+                )}
+              </div>
+
+              {/* Run Now */}
+              <button
+                onClick={runOptimizerNow}
+                disabled={runningOptimizer}
+                style={{
+                  width: '100%', padding: '9px 0', borderRadius: 8, border: 'none',
+                  cursor: runningOptimizer ? 'not-allowed' : 'pointer',
+                  background: runningOptimizer ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg, #7c3aed, #a78bfa)',
+                  color: '#fff', fontWeight: 700, fontSize: 13, opacity: runningOptimizer ? 0.7 : 1,
+                }}
+              >
+                {runningOptimizer ? '⏳ Running UCB1 cycle…' : '⚡ Run Optimizer Now'}
+              </button>
+              {optimizerStatus && (
+                <div style={{ fontSize: 12, marginTop: 8, color: optimizerStatus.startsWith('✅') ? '#22c55e' : optimizerStatus.startsWith('⏭') ? '#f59e0b' : '#ef4444', textAlign: 'center' as const }}>
+                  {optimizerStatus}
+                </div>
+              )}
+
+              {/* Algorithm explanation */}
+              <div style={{ marginTop: 14, padding: '10px 12px', background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)', borderRadius: 8, fontSize: 11, color: '#94a3b8', lineHeight: 1.6 }}>
+                <span style={{ color: '#a78bfa', fontWeight: 700 }}>UCB1 algorithm: </span>
+                score = <span style={{ color: '#22c55e' }}>reward</span> + C × √(ln(N)/nᵢ)<br />
+                reward = revenue/real_conv · C={cfg.ucb1_exploration_constant} · Δ≤{(cfg.max_weight_delta_per_cycle*100).toFixed(0)}%/cycle<br />
+                <span style={{ color: '#f59e0b' }}>Reality gate:</span> blocked until {cfg.clone_threshold_conversions} real conversions
+              </div>
+            </div>
+
+            {/* Right: UCB1 score visualization per family */}
+            <div style={styles.card}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <span style={{ fontSize: 16 }}>📡</span>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>UCB1 Scores — Live Signal</span>
+              </div>
+              {families.length === 0 ? (
+                <div style={{ color: '#64748b', fontSize: 13 }}>Loading families…</div>
+              ) : (() => {
+                const maxScore = Math.max(...families.map(f => f.business_score ?? 0), 0.01)
+                return families.map(f => {
+                  const score    = f.business_score ?? 0
+                  const pct      = maxScore > 0 ? (score / maxScore) * 100 : 0
+                  const warmUp   = (f.real_conversions ?? 0) < cfg.clone_threshold_conversions
+                  return (
+                    <div key={f.id} style={{ marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, color: '#e2e8f0' }}>{f.display_name}</span>
+                        <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
+                          {warmUp && <span style={{ color: '#f59e0b' }}>warm-up</span>}
+                          <span style={{ color: '#a78bfa' }}>score {score.toFixed(3)}</span>
+                          <span style={{ color: '#64748b' }}>{(f.posting_weight * 100).toFixed(0)}% wt</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {/* Reward component */}
+                        <div style={{ height: 10, background: 'rgba(34,197,94,0.5)', borderRadius: '3px 0 0 3px', width: `${pct * 0.7}%`, minWidth: 2, transition: 'width 0.5s' }} title="Reward (revenue)" />
+                        {/* Explore component */}
+                        <div style={{ height: 10, background: 'rgba(167,139,250,0.4)', borderRadius: '0 3px 3px 0', width: `${pct * 0.3}%`, minWidth: 2, transition: 'width 0.5s' }} title="Exploration bonus" />
+                        {/* Spacer */}
+                        <div style={{ flex: 1 }} />
+                        <span style={{ fontSize: 10, color: '#475569' }}>{f.real_conversions ?? 0} real</span>
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
+              <div style={{ marginTop: 8, display: 'flex', gap: 12, fontSize: 10, color: '#475569' }}>
+                <span><span style={{ color: 'rgba(34,197,94,0.8)' }}>■</span> Reward (exploit)</span>
+                <span><span style={{ color: 'rgba(167,139,250,0.8)' }}>■</span> Explore bonus (UCB1)</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── OPTIMIZER LOG ─────────────────────────────────────────────────── */}
+          <div style={styles.card}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>📋 Optimizer Log — Autonomous Decisions</div>
+            {optimizerLog.length === 0 ? (
+              <div style={{ color: '#64748b', fontSize: 13 }}>
+                No optimizer runs yet. Click "Run Optimizer Now" or enable Auto-Optimize to start.
+              </div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    {['Time', 'By', 'Cycle', 'Updates', 'Reward', 'Explore %', 'Duration', 'Status'].map(h => (
+                      <th key={h} style={styles.th}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {optimizerLog.map(entry => {
+                    const skipped = !!entry.skipped_reason
+                    return (
+                      <tr key={entry.id}>
+                        <td style={{ ...styles.td, color: '#94a3b8', fontSize: 11 }}>
+                          {new Date(entry.run_at).toLocaleString()}
+                        </td>
+                        <td style={{ ...styles.td, color: entry.triggered_by === 'cron' ? '#a78bfa' : '#06b6d4' }}>
+                          {entry.triggered_by}
+                        </td>
+                        <td style={{ ...styles.td, color: '#e2e8f0' }}>#{entry.cycle_number}</td>
+                        <td style={{ ...styles.td, color: entry.actions_taken > 0 ? '#22c55e' : '#475569', fontWeight: entry.actions_taken > 0 ? 700 : 400 }}>
+                          {entry.actions_taken}
+                        </td>
+                        <td style={{ ...styles.td, color: '#f59e0b' }}>
+                          {entry.total_reward > 0 ? `$${entry.total_reward.toFixed(2)}` : '—'}
+                        </td>
+                        <td style={{ ...styles.td, color: '#a78bfa' }}>
+                          {entry.exploration_pct > 0 ? `${entry.exploration_pct.toFixed(1)}%` : '—'}
+                        </td>
+                        <td style={{ ...styles.td, color: '#64748b' }}>
+                          {entry.duration_ms != null ? `${entry.duration_ms}ms` : '—'}
+                        </td>
+                        <td style={styles.td}>
+                          {skipped
+                            ? <span style={{ ...styles.badge('#f59e0b') as React.CSSProperties, fontSize: 10 }}>skipped</span>
+                            : <span style={{ ...styles.badge('#22c55e') as React.CSSProperties, fontSize: 10 }}>ok</span>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+
+            {/* Show last run's action detail if available */}
+            {!!optimizerLog[0]?.payload?.actions && Array.isArray(optimizerLog[0].payload.actions) && (optimizerLog[0].payload.actions as unknown[]).length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Last cycle actions (cycle #{optimizerLog[0].cycle_number})</div>
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                  {(optimizerLog[0].payload.actions as Array<Record<string, unknown>>).map((a, i) => {
+                    const delta = Number(a.delta ?? 0)
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: 6 }}>
+                        <span style={{ color: '#e2e8f0', width: 150, flexShrink: 0 }}>{String(a.name)}</span>
+                        <span style={{ color: '#475569' }}>{String(a.old)}% →</span>
+                        <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{String(a.new)}%</span>
+                        <span style={{ color: delta >= 0 ? '#22c55e' : '#ef4444', width: 40 }}>
+                          {delta >= 0 ? '+' : ''}{String(a.delta)}%
+                        </span>
+                        <span style={{ color: '#a78bfa', marginLeft: 4 }}>UCB1 {String(Number(a.ucb1).toFixed(3))}</span>
+                        {!!a.skipped && <span style={{ color: '#f59e0b' }}>⏭ {String(a.skip_reason)}</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── HOOK FAMILIES TABLE ──────────────────────────────────────────── */}
