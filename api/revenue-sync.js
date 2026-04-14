@@ -49,7 +49,8 @@ export default async function handler(req, res) {
     const { data: job } = await supabase
       .from('ops_jobs')
       .select('id')
-      .ilike('name', 'Digital%')
+      .or('name.ilike.AI UGC%,name.ilike.%UGC Factory%,name.ilike.%Digital%')
+      .limit(1)
       .single();
 
     const jobId = job ? job.id : null;
