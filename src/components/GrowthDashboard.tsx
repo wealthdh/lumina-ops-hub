@@ -346,6 +346,19 @@ interface RunnerConfigRow {
   min_views_before_adjust: number
   optimizer_cycle_count: number
   last_optimized_at: string | null
+  // Phase 4: stability
+  kill_switch_active: boolean
+  kill_switch_reason: string | null
+  kill_switch_triggered_at: string | null
+  stable_snapshot_at: string | null
+  revenue_drop_threshold: number
+  entropy_collapse_threshold: number
+  dynamic_exploration: boolean
+  entropy_boost_factor: number
+  variance_discount_factor: number
+  current_entropy: number | null
+  current_exploration_floor: number | null
+  total_cumulative_regret: number
 }
 
 interface OptimizerLogEntry {
@@ -428,6 +441,19 @@ function useRunnerConfig() {
         min_views_before_adjust:     data?.min_views_before_adjust     ?? 500,
         optimizer_cycle_count:       data?.optimizer_cycle_count       ?? 0,
         last_optimized_at:           data?.last_optimized_at           ?? null,
+        // Phase 4: stability
+        kill_switch_active:          data?.kill_switch_active          ?? false,
+        kill_switch_reason:          data?.kill_switch_reason          ?? null,
+        kill_switch_triggered_at:    data?.kill_switch_triggered_at    ?? null,
+        stable_snapshot_at:          data?.stable_snapshot_at          ?? null,
+        revenue_drop_threshold:      Number(data?.revenue_drop_threshold)      ?? 0.20,
+        entropy_collapse_threshold:  Number(data?.entropy_collapse_threshold)  ?? 0.25,
+        dynamic_exploration:         data?.dynamic_exploration         ?? true,
+        entropy_boost_factor:        Number(data?.entropy_boost_factor)        ?? 0.50,
+        variance_discount_factor:    Number(data?.variance_discount_factor)    ?? 0.20,
+        current_entropy:             data?.current_entropy             != null ? Number(data.current_entropy) : null,
+        current_exploration_floor:   data?.current_exploration_floor   != null ? Number(data.current_exploration_floor) : null,
+        total_cumulative_regret:     Number(data?.total_cumulative_regret)     ?? 0,
       } as RunnerConfigRow
     },
     staleTime: 30_000,
@@ -449,6 +475,43 @@ function useOptimizerLog(limit = 20) {
     },
     staleTime: 30_000,
     refetchInterval: 30_000,
+  })
+}
+
+// ─── Regret Log hook ─────────────────────────────────────────────────────────
+
+interface RegretLogEntry {
+  id: string
+  created_at: string
+  cycle_number: number
+  family_id: string
+  display_name: string | null
+  old_weight: number
+  new_weight: number
+  weight_delta: number
+  expected_reward: number
+  snapshot_revenue: number
+  actual_revenue_delta: number | null
+  regret_score: number | null
+  policy_version: number
+  evaluation_window_hours: number
+  evaluated_at: string | null
+}
+
+function useRegretLog(limit = 30) {
+  return useQuery<RegretLogEntry[]>({
+    queryKey: ['optimizer_regret_log', limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('optimizer_regret_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      if (error) return []
+      return (data ?? []) as RegretLogEntry[]
+    },
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   })
 }
 
@@ -705,8 +768,11 @@ export default function GrowthDashboard() {
   const { data: families = [], refetch: refetchFamilies } = useHookFamilies()
   const { data: runnerCfg, refetch: refetchConfig }       = useRunnerConfig()
   const { data: optimizerLog = [], refetch: refetchLog }  = useOptimizerLog(20)
+  const { data: regretLog    = [], refetch: refetchRegret } = useRegretLog(30)
   const [runningOptimizer, setRunningOptimizer]           = useState(false)
   const [optimizerStatus,  setOptimizerStatus]            = useState<string | null>(null)
+  const [resettingKS,      setResettingKS]                = useState(false)
+  const [savingSnapshot,   setSavingSnapshot]             = useState(false)
 
   // Prefer real conversion_events data; fall back to ugc_creatives aggregates
   // Real revenue = sum of confirmed Stripe payments
@@ -735,7 +801,7 @@ export default function GrowthDashboard() {
   const maxRev = Math.max(...creatives.map(c => c.revenue_usd), 0.01)
 
   // ── Decision Engine ───────────────────────────────────────────────────────
-  const cfg: RunnerConfigRow = runnerCfg ?? { use_real_metrics: true, exploration_floor: 0.25, clone_threshold_conversions: 20, max_family_weight: 0.60, daily_generation_goal: 50, reality_mode_enabled: true, auto_optimize_enabled: false, optimize_interval_hours: 4, max_weight_delta_per_cycle: 0.05, ucb1_exploration_constant: 1.41, min_views_before_adjust: 100, optimizer_cycle_count: 0, last_optimized_at: null }
+  const cfg: RunnerConfigRow = runnerCfg ?? { use_real_metrics: true, exploration_floor: 0.25, clone_threshold_conversions: 20, max_family_weight: 0.60, daily_generation_goal: 50, reality_mode_enabled: true, auto_optimize_enabled: false, optimize_interval_hours: 4, max_weight_delta_per_cycle: 0.05, ucb1_exploration_constant: 1.41, min_views_before_adjust: 100, optimizer_cycle_count: 0, last_optimized_at: null, kill_switch_active: false, kill_switch_reason: null, kill_switch_triggered_at: null, stable_snapshot_at: null, revenue_drop_threshold: 0.20, entropy_collapse_threshold: 0.25, dynamic_exploration: true, entropy_boost_factor: 0.50, variance_discount_factor: 0.20, current_entropy: null, current_exploration_floor: null, total_cumulative_regret: 0 }
   const decisionActions = computeDecisionActions(families, cfg)
   const driftAlerts     = computeDriftAlerts(families, cfg)
   const impactFam       = families.find(f => f.id === impactFamily) ?? families[0] ?? null
@@ -820,6 +886,30 @@ export default function GrowthDashboard() {
       .update({ auto_optimize_enabled: enabled, updated_at: new Date().toISOString() })
       .eq('id', 'singleton')
     await refetchConfig()
+  }
+
+  // ── Kill switch reset ──────────────────────────────────────────────────────
+  async function resetKillSwitch() {
+    setResettingKS(true)
+    try {
+      await supabase.from('auto_runner_config')
+        .update({ kill_switch_active: false, kill_switch_reason: null, kill_switch_triggered_at: null })
+        .eq('id', 'singleton')
+      await refetchConfig()
+    } finally {
+      setResettingKS(false)
+    }
+  }
+
+  // ── Save stable snapshot manually ─────────────────────────────────────────
+  async function saveSnapshot() {
+    setSavingSnapshot(true)
+    try {
+      await supabase.rpc('save_stable_snapshot')
+      await refetchConfig()
+    } finally {
+      setSavingSnapshot(false)
+    }
   }
 
   const styles = {
@@ -1386,6 +1476,93 @@ export default function GrowthDashboard() {
       {/* ── ENGINE TAB ── */}
       {tab === 'engine' && (
         <>
+          {/* ── Kill Switch Banner ──────────────────────────────────────── */}
+          {cfg.kill_switch_active && (
+            <div style={{ ...styles.card, background: 'rgba(239,68,68,0.12)', border: '2px solid rgba(239,68,68,0.70)', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const }}>
+                <div style={{ fontSize: 24 }}>⛔</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: '#ef4444', letterSpacing: 1 }}>
+                    KILL SWITCH ACTIVE — All Optimization Frozen
+                  </div>
+                  <div style={{ fontSize: 12, color: '#fca5a5', marginTop: 4 }}>
+                    {cfg.kill_switch_reason ?? 'Optimizer triggered safety freeze.'} AutoRunner posting is paused.
+                  </div>
+                  {cfg.kill_switch_triggered_at && (
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                      Triggered: {new Date(cfg.kill_switch_triggered_at).toLocaleString()}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={saveSnapshot}
+                    disabled={savingSnapshot}
+                    style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.4)', background: 'transparent', color: '#fca5a5', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    {savingSnapshot ? '💾 Saving…' : '💾 Save Snapshot'}
+                  </button>
+                  <button
+                    onClick={resetKillSwitch}
+                    disabled={resettingKS}
+                    style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#ef4444', color: '#fff', fontSize: 13, fontWeight: 700, cursor: resettingKS ? 'not-allowed' : 'pointer', opacity: resettingKS ? 0.7 : 1 }}
+                  >
+                    {resettingKS ? '⏳ Resetting…' : '✅ Clear Kill Switch'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Entropy + Dynamic Floor Gauge ───────────────────────────── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+            {/* Entropy card */}
+            <div style={{ ...styles.card, border: `1px solid ${(cfg.current_entropy ?? 1) < cfg.entropy_collapse_threshold ? 'rgba(239,68,68,0.5)' : 'rgba(99,102,241,0.3)'}` }}>
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>WEIGHT ENTROPY</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: (cfg.current_entropy ?? 1) < cfg.entropy_collapse_threshold ? '#ef4444' : '#a78bfa' }}>
+                {cfg.current_entropy != null ? (cfg.current_entropy * 100).toFixed(0) + '%' : '—'}
+              </div>
+              <div style={{ marginTop: 6, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(cfg.current_entropy ?? 0) * 100}%`, background: (cfg.current_entropy ?? 1) < cfg.entropy_collapse_threshold ? '#ef4444' : '#7c3aed', transition: 'width 0.4s' }} />
+              </div>
+              <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>
+                0% = fully collapsed · 100% = uniform · kill at {(cfg.entropy_collapse_threshold * 100).toFixed(0)}%
+              </div>
+            </div>
+            {/* Dynamic floor card */}
+            <div style={{ ...styles.card, border: '1px solid rgba(6,182,212,0.3)' }}>
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>EFFECTIVE EXPLORE FLOOR</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#06b6d4' }}>
+                {cfg.current_exploration_floor != null
+                  ? (cfg.current_exploration_floor * 100).toFixed(0) + '%'
+                  : (cfg.exploration_floor * 100).toFixed(0) + '%'}
+              </div>
+              <div style={{ marginTop: 6, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(cfg.current_exploration_floor ?? cfg.exploration_floor) * 100}%`, background: '#0891b2', transition: 'width 0.4s' }} />
+              </div>
+              <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>
+                Base: {(cfg.exploration_floor * 100).toFixed(0)}% {cfg.dynamic_exploration ? '· dynamic on (entropy-tuned)' : '· static'}
+              </div>
+            </div>
+            {/* Cumulative regret card */}
+            <div style={{ ...styles.card, border: '1px solid rgba(245,158,11,0.3)' }}>
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>CUMULATIVE REGRET</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: cfg.total_cumulative_regret > 0 ? '#f59e0b' : '#22c55e' }}>
+                {cfg.total_cumulative_regret > 0 ? '+' : ''}{cfg.total_cumulative_regret.toFixed(2)}
+              </div>
+              <div style={{ fontSize: 10, color: '#475569', marginTop: 10 }}>
+                Negative = over-estimated rewards · Positive = under-estimated (rare)
+              </div>
+              <button
+                onClick={saveSnapshot}
+                disabled={savingSnapshot}
+                style={{ marginTop: 8, width: '100%', padding: '5px 0', borderRadius: 6, border: '1px solid rgba(245,158,11,0.3)', background: 'transparent', color: '#f59e0b', fontSize: 11, cursor: 'pointer' }}
+              >
+                {savingSnapshot ? 'Saving…' : '💾 Save Stable Snapshot'}
+              </button>
+            </div>
+          </div>
+
           {/* ── Reality Mode Banner ─────────────────────────────────────── */}
           <div style={{ ...styles.card, border: cfg.reality_mode_enabled ? '1px solid rgba(34,197,94,0.35)' : '1px solid rgba(239,68,68,0.35)', marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const }}>
@@ -1843,6 +2020,72 @@ export default function GrowthDashboard() {
                   })}
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* ── REGRET LOG ───────────────────────────────────────────────────── */}
+          <div style={{ ...styles.card, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>📉 Regret Log — Decision Quality Tracking</span>
+              <span style={{ fontSize: 11, color: '#64748b', marginLeft: 4 }}>Negative regret = over-estimated reward (bad signal). Positive = under-estimated (lucky).</span>
+              <button onClick={() => refetchRegret()} style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: '#94a3b8', fontSize: 11, cursor: 'pointer' }}>↻ Refresh</button>
+            </div>
+            {regretLog.length === 0 ? (
+              <div style={{ textAlign: 'center' as const, color: '#475569', fontSize: 13, padding: '24px 0' }}>
+                No regret entries yet — they appear after the first optimizer cycle.
+              </div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    {['Cycle', 'Family', 'Old W', 'New W', 'Δ Weight', 'Expected Reward', 'Actual Δ Rev', 'Regret', 'Status'].map(h => (
+                      <th key={h} style={styles.th}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {regretLog.map((r) => {
+                    const regretColor = r.regret_score == null ? '#64748b'
+                      : r.regret_score < -0.5 ? '#ef4444'
+                      : r.regret_score < 0    ? '#f59e0b'
+                      : '#22c55e'
+                    const deltaColor = r.weight_delta > 0 ? '#22c55e' : r.weight_delta < 0 ? '#ef4444' : '#64748b'
+                    return (
+                      <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={styles.td}><span style={{ fontWeight: 600, color: '#a78bfa' }}>#{r.cycle_number}</span></td>
+                        <td style={styles.td}>{r.display_name ?? r.family_id.slice(0, 12)}</td>
+                        <td style={styles.td}>{(r.old_weight * 100).toFixed(1)}%</td>
+                        <td style={styles.td}>{(r.new_weight * 100).toFixed(1)}%</td>
+                        <td style={styles.td}>
+                          <span style={{ color: deltaColor, fontWeight: 600 }}>
+                            {r.weight_delta > 0 ? '+' : ''}{(r.weight_delta * 100).toFixed(1)}%
+                          </span>
+                        </td>
+                        <td style={styles.td}>{r.expected_reward.toFixed(3)}</td>
+                        <td style={styles.td}>
+                          {r.actual_revenue_delta != null
+                            ? <span style={{ color: r.actual_revenue_delta >= 0 ? '#22c55e' : '#ef4444' }}>
+                                {r.actual_revenue_delta >= 0 ? '+' : ''}${r.actual_revenue_delta.toFixed(2)}
+                              </span>
+                            : <span style={{ color: '#475569' }}>⏳ pending</span>}
+                        </td>
+                        <td style={styles.td}>
+                          {r.regret_score != null
+                            ? <span style={{ color: regretColor, fontWeight: 700 }}>
+                                {r.regret_score > 0 ? '+' : ''}{r.regret_score.toFixed(3)}
+                              </span>
+                            : <span style={{ color: '#475569' }}>—</span>}
+                        </td>
+                        <td style={styles.td}>
+                          {r.evaluated_at
+                            ? <span style={{ color: '#22c55e', fontSize: 11 }}>✅ evaluated</span>
+                            : <span style={{ color: '#64748b', fontSize: 11 }}>⏳ {r.evaluation_window_hours}h window</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
 

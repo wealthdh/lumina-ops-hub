@@ -64,11 +64,16 @@ interface HookFamily {
 
 export interface RunnerConfig {
   use_real_metrics: boolean
-  exploration_floor: number           // 0.25 = 25% slots go to exploration families
+  exploration_floor: number           // base floor (static config)
   clone_threshold_conversions: number // 20 = only clone after 20 real conversions
   max_family_weight: number           // 0.60 = cap any single family
   daily_generation_goal: number
   reality_mode_enabled: boolean
+  // Phase 4: stability fields (read from DB, never written by autoRunner)
+  kill_switch_active?: boolean        // if true → pause all posting/generation
+  kill_switch_reason?: string | null
+  dynamic_exploration?: boolean
+  current_exploration_floor?: number | null  // optimizer-computed effective floor
 }
 
 const DEFAULT_CONFIG: RunnerConfig = {
@@ -103,6 +108,11 @@ export async function getRunnerConfig(): Promise<RunnerConfig> {
         max_family_weight:           Number(data.max_family_weight)   ?? DEFAULT_CONFIG.max_family_weight,
         daily_generation_goal:       data.daily_generation_goal       ?? DEFAULT_CONFIG.daily_generation_goal,
         reality_mode_enabled:        data.reality_mode_enabled        ?? DEFAULT_CONFIG.reality_mode_enabled,
+        // Phase 4: stability — autoRunner reads these but NEVER writes them
+        kill_switch_active:          data.kill_switch_active          ?? false,
+        kill_switch_reason:          data.kill_switch_reason          ?? null,
+        dynamic_exploration:         data.dynamic_exploration         ?? true,
+        current_exploration_floor:   data.current_exploration_floor   ?? null,
       }
       configCacheTs = Date.now()
       return configCache
@@ -116,11 +126,13 @@ export function invalidateConfigCache(): void {
   configCacheTs = 0
   familyCache = null
   familyCacheTs = 0
+  lastSeenPolicyVersion = -1   // force fresh policy reload on next tick
 }
 
 // ─── Family Weight Cache ──────────────────────────────────────────────────────
 let familyCache: HookFamily[] | null = null
 let familyCacheTs = 0
+let lastSeenPolicyVersion = -1        // tracks highest policy_version seen; invalidates on change
 const FAMILY_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 async function getActiveFamilies(): Promise<HookFamily[]> {
@@ -130,11 +142,17 @@ async function getActiveFamilies(): Promise<HookFamily[]> {
   try {
     const { data } = await supabase
       .from('hook_families')
-      .select('id, display_name, posting_weight, generation_weight, status, real_conversions, exploration_eligible')
+      .select('id, display_name, posting_weight, generation_weight, status, real_conversions, exploration_eligible, policy_version')
       .gt('posting_weight', 0)
       .order('rank', { ascending: true })
     familyCache = (data || []) as HookFamily[]
     familyCacheTs = Date.now()
+    // Track max policy_version — if it ever changes, next fetch will be fresh
+    const maxVersion = Math.max(...(data || []).map((f: { policy_version?: number }) => f.policy_version ?? 0))
+    if (maxVersion > lastSeenPolicyVersion) {
+      lastSeenPolicyVersion = maxVersion
+      log(`Policy version advanced to ${maxVersion} — family weights reloaded`, 'info')
+    }
     return familyCache
   } catch {
     // Fall back to hard-coded defaults if DB unavailable
@@ -149,8 +167,10 @@ async function getActiveFamilies(): Promise<HookFamily[]> {
 }
 
 // ─── Exploration-aware family picker ─────────────────────────────────────────
-// With probability = exploration_floor → pick any exploration_eligible family uniformly.
-// With probability = (1 - exploration_floor) → pick by weight from winner families.
+// Uses the optimizer-computed effective floor (current_exploration_floor) when
+// dynamic_exploration is on; falls back to the static base exploration_floor.
+// With probability = floor → pick any exploration_eligible family uniformly.
+// With probability = (1 - floor) → pick by weight from winner families.
 async function pickFamilyWithExploration(
   weightKey: 'posting_weight' | 'generation_weight'
 ): Promise<string | null> {
@@ -158,8 +178,19 @@ async function pickFamilyWithExploration(
   const families = await getActiveFamilies()
   if (families.length === 0) return null
 
+  // Phase 4: honour kill switch — refuse to post/generate when active
+  if (cfg.kill_switch_active) {
+    log(`Kill switch active (${cfg.kill_switch_reason ?? 'unknown reason'}) — skipping family pick`, 'warn')
+    return null
+  }
+
+  // Use optimizer-computed effective floor when dynamic_exploration is enabled
+  const effectiveFloor = (cfg.dynamic_exploration && cfg.current_exploration_floor != null)
+    ? cfg.current_exploration_floor
+    : cfg.exploration_floor
+
   const roll = Math.random()
-  if (roll < cfg.exploration_floor) {
+  if (roll < effectiveFloor) {
     // Exploration slot: pick uniformly from all exploration_eligible families
     const pool = families.filter(f => f.exploration_eligible !== false)
     if (pool.length === 0) return weightedPickFamily(families, weightKey)
@@ -712,6 +743,18 @@ async function tick(onUpdate: (state: AutoRunnerState) => void): Promise<void> {
   globalState.nextCycleAt = new Date(Date.now() + 900_000).toISOString()
 
   log(`Tick ${globalState.cycleCount}`, 'info')
+
+  // ── Phase 4: Kill switch guard ────────────────────────────────────────────
+  // autoRunner is a pure EXECUTOR — it reads policy, never writes it.
+  // If the optimizer triggers a kill switch, we freeze until it's cleared.
+  try {
+    const cfg = await getRunnerConfig()
+    if (cfg.kill_switch_active) {
+      log(`⛔ KILL SWITCH ACTIVE: ${cfg.kill_switch_reason ?? 'optimizer triggered'} — tick paused`, 'error')
+      onUpdate(globalState)
+      return  // skip all processing; optimizer must clear the switch to resume
+    }
+  } catch { /* allow tick to proceed if config fetch fails */ }
 
   // 1. Failsafe cleanup
   await fixStuckCreatives()
