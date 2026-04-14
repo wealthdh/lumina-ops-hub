@@ -720,7 +720,7 @@ function AutoRunnerPanel() {
   const [state, setState] = useState<AutoRunnerState | null>(null)
   const [running, setRunning] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const controlRef = useRef<{ stop: () => void } | null>(null)
+  const controlRef = useRef<AutoRunnerController | null>(null)
 
   // Poll state every 5s when running
   useEffect(() => {
