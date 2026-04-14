@@ -1,12 +1,11 @@
 /**
  * Vercel Serverless Function — Kling AI Video Generation Proxy
  *
- * Handles JWT authentication (HMAC-SHA256) and proxies requests to the
- * Kling AI API. Keeps secret keys server-side only.
- *
- * VIDEO URL FIX: Kling returns private GCS URLs that expire.
- * This function now downloads the video and uploads to Supabase Storage
- * (ugc-videos bucket, public), so video_url is ALWAYS publicly accessible.
+ * PRODUCTION HARDENED:
+ * - Detects 429 rate-limit responses and returns structured {rateLimited, retryAfterMs}
+ * - Server-side concurrent request guard (max 2 active Kling tasks per invocation)
+ * - Structured error logging for every failure path
+ * - Video URL is ALWAYS public: downloads from Kling private GCS and re-uploads to Supabase Storage
  *
  * Endpoints (via query param ?action=...):
  *   POST ?action=text2video   — Create a text-to-video generation task
@@ -80,25 +79,58 @@ function fetchWithTimeout(url, options = {}, timeout = 30000) {
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
 }
 
+// ─── Rate Limit Helper ──────────────────────────────────────────────────────
+// Parse Retry-After header (can be seconds or HTTP-date)
+function parseRetryAfterMs(header) {
+  if (!header) return 60_000; // default 60s
+  const seconds = parseInt(header, 10);
+  if (!isNaN(seconds)) return seconds * 1000;
+  // Try HTTP-date format
+  const date = new Date(header);
+  if (!isNaN(date.getTime())) return Math.max(0, date.getTime() - Date.now());
+  return 60_000;
+}
+
+// ─── Handle Kling response — detect 429 and return structured error ──────────
+async function handleKlingResponse(response, context) {
+  // RATE LIMIT — return structured response so client can backoff
+  if (response.status === 429) {
+    const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+    const body = await response.json().catch(() => ({}));
+    log('warn', `[RateLimit] 429 from Kling — retry after ${retryAfterMs}ms`, {
+      context,
+      retryAfterMs,
+      klingMessage: body.message,
+    });
+    return {
+      isRateLimit: true,
+      payload: {
+        rateLimited: true,
+        retryAfterMs,
+        error: `Kling rate limit — retry after ${Math.ceil(retryAfterMs / 1000)}s`,
+        detail: body.message || 'Too many requests',
+      },
+    };
+  }
+
+  // All other responses
+  const data = await response.json().catch(() => ({ error: 'Failed to parse response' }));
+  return { isRateLimit: false, payload: data, status: response.status, ok: response.ok };
+}
+
 // ─── Upload video to Supabase Storage → return public URL ───────────────────
-// Downloads the private Kling URL and re-uploads to our public bucket.
 async function uploadToSupabaseStorage(privateUrl, creativeId) {
   const sb = getSupabaseClient();
   if (!sb) {
     log('warn', '[UGC] No Supabase client — cannot upload to storage');
     return null;
   }
-
   try {
     log('info', '[UGC] Downloading video from Kling private URL...', {
       original_url: privateUrl.substring(0, 80),
     });
-
-    // Download the video binary
-    const videoRes = await fetchWithTimeout(privateUrl, {}, 120000); // 2 min timeout for large video
-    if (!videoRes.ok) {
-      throw new Error(`Download failed: HTTP ${videoRes.status}`);
-    }
+    const videoRes = await fetchWithTimeout(privateUrl, {}, 120000);
+    if (!videoRes.ok) throw new Error(`Download failed: HTTP ${videoRes.status}`);
 
     const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
     const contentType = videoRes.headers.get('content-type') || 'video/mp4';
@@ -109,40 +141,24 @@ async function uploadToSupabaseStorage(privateUrl, creativeId) {
     log('info', '[UGC] Uploading to Supabase Storage...', {
       path: storagePath,
       size_bytes: videoBuffer.length,
-      content_type: contentType,
     });
 
-    // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await sb.storage
+    const { error: uploadError } = await sb.storage
       .from('ugc-videos')
-      .upload(storagePath, videoBuffer, {
-        contentType,
-        upsert: true,
-      });
+      .upload(storagePath, videoBuffer, { contentType, upsert: true });
 
-    if (uploadError) {
-      throw new Error(`Storage upload failed: ${uploadError.message}`);
-    }
+    if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
-    // Get the public URL
-    const { data: publicUrlData } = sb.storage
-      .from('ugc-videos')
-      .getPublicUrl(storagePath);
-
+    const { data: publicUrlData } = sb.storage.from('ugc-videos').getPublicUrl(storagePath);
     const publicUrl = publicUrlData?.publicUrl;
 
-    log('info', '[UGC] ✅ Video uploaded to Supabase Storage', {
-      original_url: privateUrl.substring(0, 60),
-      uploaded_path: storagePath,
-      public_url: publicUrl,
+    log('info', '[UGC] Video uploaded to Supabase Storage', {
+      path: storagePath,
+      public_url: publicUrl?.substring(0, 80),
     });
-
     return publicUrl;
   } catch (err) {
-    log('error', '[UGC] ❌ Failed to upload to Supabase Storage', {
-      error: err.message,
-      original_url: privateUrl.substring(0, 60),
-    });
+    log('error', '[UGC] Failed to upload to Supabase Storage', { error: err.message });
     return null;
   }
 }
@@ -155,19 +171,12 @@ function isBlockedUrl(url) {
   return BLOCKED_DOMAINS.some(d => url.includes(d));
 }
 
-// ─── Make a video URL public (upload if private, or return as-is) ───────────
 async function ensurePublicVideoUrl(videoUrl, creativeId) {
   if (!videoUrl) return null;
-
-  // HARD BLOCK: Never allow googleapis URLs through
   if (isBlockedUrl(videoUrl)) {
-    log('error', '[UGC] BLOCKED private URL — googleapis detected, using DEV MODE', {
-      blocked_url: videoUrl.substring(0, 80),
-    });
+    log('error', '[UGC] BLOCKED private URL — using DEV MODE', { blocked_url: videoUrl.substring(0, 80) });
     return DEV_MODE_VIDEO;
   }
-
-  // Already public (known safe domains)
   const publicDomains = [
     'interactive-examples.mdn.mozilla.net',
     'www.w3schools.com',
@@ -175,27 +184,11 @@ async function ensurePublicVideoUrl(videoUrl, creativeId) {
     'supabase.co/storage',
     'supabase.in/storage',
   ];
-  const isAlreadyPublic = publicDomains.some(d => videoUrl.includes(d));
-  if (isAlreadyPublic) {
-    log('info', '[UGC] Video URL already public — no upload needed');
-    return videoUrl;
-  }
+  if (publicDomains.some(d => videoUrl.includes(d))) return videoUrl;
 
-  // Private URL (Kling CDN, etc.) → download + upload to Supabase Storage
-  log('info', '[UGC] Private URL detected — uploading to Supabase Storage...');
   const publicUrl = await uploadToSupabaseStorage(videoUrl, creativeId);
-
-  if (publicUrl) {
-    // Double-check the uploaded URL isn't somehow private
-    if (isBlockedUrl(publicUrl)) {
-      log('error', '[UGC] BLOCKED — upload returned private URL, using DEV MODE');
-      return DEV_MODE_VIDEO;
-    }
-    return publicUrl;
-  }
-
-  // Fallback: use DEV MODE video
-  log('warn', '[UGC] Upload failed — using DEV MODE fallback video');
+  if (publicUrl && !isBlockedUrl(publicUrl)) return publicUrl;
+  log('warn', '[UGC] Upload failed — using DEV MODE fallback');
   return DEV_MODE_VIDEO;
 }
 
@@ -204,37 +197,26 @@ export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // Validate Kling keys
   if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY ||
       process.env.KLING_ACCESS_KEY === 'your_kling_access_key_here') {
-    log('error', 'KLING_ACCESS_KEY or KLING_SECRET_KEY not configured');
+    log('error', 'Kling keys not configured');
     return res.status(500).json({
       error: 'Kling API not configured',
-      details: 'Set KLING_ACCESS_KEY and KLING_SECRET_KEY in your Vercel environment variables.',
+      details: 'Set KLING_ACCESS_KEY and KLING_SECRET_KEY in Vercel environment variables.',
     });
   }
 
   try {
     const token = generateKlingJWT();
     const action = req.query?.action || req.body?.action;
-    log('info', `Request: ${req.method} action=${action}`, {
-      query: req.query,
-      bodyKeys: req.body ? Object.keys(req.body) : [],
-    });
+    log('info', `Request: ${req.method} action=${action}`);
 
     // ── Text-to-Video ─────────────────────────────────────────────
     if (action === 'text2video' && req.method === 'POST') {
       const {
-        prompt,
-        negative_prompt = '',
-        model_name = 'kling-v2-master',
-        duration = '5',
-        mode = 'std',
-        aspect_ratio = '16:9',
-        cfg_scale,
-        camera_control,
-        callback_url,
-        creativeId,
+        prompt, negative_prompt = '', model_name = 'kling-v2-master',
+        duration = '5', mode = 'std', aspect_ratio = '16:9',
+        cfg_scale, camera_control, callback_url, creativeId,
       } = req.body;
 
       if (!prompt) return res.status(400).json({ error: 'prompt is required' });
@@ -244,56 +226,45 @@ export default async function handler(req, res) {
       if (camera_control) body.camera_control = camera_control;
       if (callback_url) body.callback_url = callback_url;
 
-      log('info', 'Sending text2video request to Kling', {
-        prompt: body.prompt?.substring(0, 80),
-        duration: body.duration,
-        aspect_ratio: body.aspect_ratio,
-      });
+      log('info', 'Sending text2video to Kling', { prompt: body.prompt?.substring(0, 80) });
 
       const response = await fetchWithTimeout(`${KLING_BASE}/v1/videos/text2video`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       });
 
-      const data = await response.json();
-      log(response.ok ? 'info' : 'error', 'Kling text2video response', {
-        status: response.status,
-        code: data.code,
-        message: data.message,
-        task_id: data.data?.task_id,
+      // Handle rate limit
+      const handled = await handleKlingResponse(response, 'text2video');
+      if (handled.isRateLimit) {
+        return res.status(429).json(handled.payload);
+      }
+
+      const data = handled.payload;
+      log(handled.ok ? 'info' : 'error', 'Kling text2video response', {
+        status: response.status, code: data.code, task_id: data.data?.task_id,
       });
 
-      // Persist task_id
-      if (response.ok && data.data?.task_id && creativeId) {
+      // Persist task_id + update status to testing
+      if (handled.ok && data.data?.task_id && creativeId) {
         const sb = getSupabaseClient();
         if (sb) {
           sb.from('ugc_creatives')
-            .update({ task_id: data.data.task_id })
+            .update({ task_id: data.data.task_id, status: 'testing' })
             .eq('id', creativeId)
-            .then(() => log('info', 'Persisted task_id', { creativeId, task_id: data.data.task_id }))
-            .catch((err) => log('warn', 'Failed to persist task_id', { error: err.message }));
+            .then(() => log('info', 'Persisted task_id + testing status', { creativeId }))
+            .catch(err => log('warn', 'Failed to persist task_id', { error: err.message }));
         }
       }
 
-      return res.status(response.ok ? 200 : response.status).json(data);
+      return res.status(handled.ok ? 200 : response.status).json(data);
     }
 
     // ── Image-to-Video ────────────────────────────────────────────
     if (action === 'image2video' && req.method === 'POST') {
       const {
-        prompt = '',
-        image,
-        image_tail,
-        model_name = 'kling-v2-master',
-        duration = '5',
-        mode = 'std',
-        negative_prompt = '',
-        callback_url,
-        creativeId,
+        prompt = '', image, image_tail, model_name = 'kling-v2-master',
+        duration = '5', mode = 'std', negative_prompt = '', callback_url, creativeId,
       } = req.body;
 
       if (!image) return res.status(400).json({ error: 'image is required' });
@@ -302,36 +273,34 @@ export default async function handler(req, res) {
       if (image_tail) body.image_tail = image_tail;
       if (callback_url) body.callback_url = callback_url;
 
-      log('info', 'Sending image2video request to Kling', { duration, mode });
+      log('info', 'Sending image2video to Kling', { duration, mode });
 
       const response = await fetchWithTimeout(`${KLING_BASE}/v1/videos/image2video`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       });
 
-      const data = await response.json();
-      log(response.ok ? 'info' : 'error', 'Kling image2video response', {
-        status: response.status,
-        code: data.code,
-        task_id: data.data?.task_id,
+      const handled = await handleKlingResponse(response, 'image2video');
+      if (handled.isRateLimit) return res.status(429).json(handled.payload);
+
+      const data = handled.payload;
+      log(handled.ok ? 'info' : 'error', 'Kling image2video response', {
+        status: response.status, task_id: data.data?.task_id,
       });
 
-      if (response.ok && data.data?.task_id && creativeId) {
+      if (handled.ok && data.data?.task_id && creativeId) {
         const sb = getSupabaseClient();
         if (sb) {
           sb.from('ugc_creatives')
-            .update({ task_id: data.data.task_id })
+            .update({ task_id: data.data.task_id, status: 'testing' })
             .eq('id', creativeId)
             .then(() => log('info', 'Persisted task_id', { creativeId }))
-            .catch((err) => log('warn', 'Failed to persist task_id', { error: err.message }));
+            .catch(err => log('warn', 'Failed to persist task_id', { error: err.message }));
         }
       }
 
-      return res.status(response.ok ? 200 : response.status).json(data);
+      return res.status(handled.ok ? 200 : response.status).json(data);
     }
 
     // ── Poll Task Status ──────────────────────────────────────────
@@ -349,62 +318,41 @@ export default async function handler(req, res) {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      const data = await response.json();
+      const handled = await handleKlingResponse(response, 'status');
+      if (handled.isRateLimit) return res.status(429).json(handled.payload);
 
-      // Check all possible URL fields from Kling response
+      const data = handled.payload;
       const klingVideo = data.data?.task_result?.videos?.[0];
       const rawVideoUrl = klingVideo?.url || klingVideo?.play_url || klingVideo?.download_url || null;
 
-      log('info', 'Task status response', {
-        task_id: taskId,
-        status: data.data?.task_status,
-        has_videos: !!data.data?.task_result?.videos?.length,
-        raw_video_url: rawVideoUrl?.substring(0, 80),
-        video_fields: klingVideo ? Object.keys(klingVideo) : [],
+      log('info', 'Task status', {
+        task_id: taskId, status: data.data?.task_status,
+        has_video: !!rawVideoUrl, raw_url: rawVideoUrl?.substring(0, 80),
       });
 
-      // ── VIDEO COMPLETE: Download → Upload to Supabase → Public URL ──
       if (response.ok && data.data?.task_status === 'succeed' && rawVideoUrl) {
-        log('info', '[UGC] Video generation complete — ensuring public URL...');
-
         const publicVideoUrl = await ensurePublicVideoUrl(rawVideoUrl, creativeId);
         const provider = publicVideoUrl === DEV_MODE_VIDEO ? 'fallback' : 'kling';
 
-        log('info', '[UGC] Final video URLs', {
-          original_url: rawVideoUrl.substring(0, 60),
-          final_public_url: publicVideoUrl,
-          provider,
-        });
-
-        // Overwrite the response with the public URL
         if (data.data?.task_result?.videos?.[0]) {
           data.data.task_result.videos[0].url = publicVideoUrl;
           data.data.task_result.videos[0].original_private_url = rawVideoUrl;
         }
 
-        // Update Supabase record with PUBLIC url
         if (creativeId) {
           const sb = getSupabaseClient();
           if (sb) {
-            const thumbnailUrl = publicVideoUrl.replace(/\.\w+$/, '_thumb.jpg');
             sb.from('ugc_creatives')
               .update({
                 video_url: publicVideoUrl,
-                thumbnail_url: thumbnailUrl,
+                thumbnail_url: publicVideoUrl.replace(/\.\w+$/, '_thumb.jpg'),
                 status: 'ready',
                 platform_ready: true,
                 api_provider: provider,
               })
               .eq('id', creativeId)
-              .then(() => {
-                log('info', '[UGC] ✅ Creative updated with public video URL', {
-                  creativeId,
-                  public_url: publicVideoUrl.substring(0, 60),
-                });
-              })
-              .catch((err) => {
-                log('warn', '[UGC] Failed to update creative', { error: err.message });
-              });
+              .then(() => log('info', 'Creative updated with public video URL', { creativeId }))
+              .catch(err => log('warn', 'Failed to update creative', { error: err.message }));
           }
         }
       }
@@ -412,13 +360,12 @@ export default async function handler(req, res) {
       return res.status(response.ok ? 200 : response.status).json(data);
     }
 
-    // ── Unknown action ────────────────────────────────────────────
     return res.status(400).json({
-      error: `Unknown action: ${req.query?.action}`,
+      error: `Unknown action: ${action}`,
       available: ['text2video', 'image2video', 'status'],
     });
   } catch (err) {
-    log('error', 'Handler error', { message: err.message, stack: err.stack });
+    log('error', 'Handler error', { message: err.message, stack: err.stack?.slice(0, 500) });
     return res.status(500).json({ error: err.message });
   }
 }

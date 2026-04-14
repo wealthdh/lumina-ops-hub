@@ -2,7 +2,7 @@
  * AI UGC + Content Swarm â EXECUTION MODE
  *
  * AUTONOMOUS REVENUE ENGINE:
- * - Auto-runs pipeline every 15 min (3 creatives per cycle)
+ * - Auto-runs pipeline every 3 min (3 creatives per cycle)
  * - Viral hooks + CTA rotation on every caption
  * - Daily goal tracking (50 generated, 30 ready/posted)
  * - Manual post queue for ready creatives
@@ -45,6 +45,8 @@ import {
 import { supabase } from '../lib/supabase'
 import {
   generateAndSaveCreative,
+  isRateLimited,
+  rateLimitRemainingMs,
   type PipelineStatus,
 } from '../lib/ugcApi'
 import {
@@ -60,6 +62,7 @@ import {
   getAutoRunnerState,
   getTodayStats,
   type AutoRunnerState,
+  type AutoRunnerController,
 } from '../lib/autoRunner'
 import clsx from 'clsx'
 
@@ -88,6 +91,10 @@ interface UgcCreative {
   hook_score?: number | null
   cta_used?: string | null
   posted_at?: string | null
+  retry_count?: number
+  error_reason?: string | null
+  monetization_url?: string | null
+  monetization_product?: string | null
 }
 
 interface SeoKeyword {
@@ -244,13 +251,17 @@ function useRunPipeline() {
         }
       } catch {
         // Twitter completely unavailable â mark ready_to_post, DON'T crash
-        await updateCreativeStatus(creativeId, 'ready_to_post').catch((e) => console.error('[ContentSwarm] Failed to persist ready_to_post - Supabase may be down:', e))
+        await updateCreativeStatus(creativeId, 'ready_to_post').catch((e) => console.error('[ContentSwarm] Failed to persist ready_to_post â Supabase may be down:', e))
         onStep?.('ready_to_post', 'Twitter offline â creative ready in manual post queue')
       }
 
       qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
       onStep?.('complete', 'Pipeline complete')
       return result
+    },
+    onError: (err, opts) => {
+      // Mark draft as error if pipeline throws
+      updateCreativeStatus(opts.creativeId, 'error').catch(() => {})
     },
   })
 }
@@ -309,15 +320,15 @@ function useGenerateAndRun() {
       let result
       try {
         result = await runPipeline.mutateAsync({
-        creativeId: creative.id,
-        prompt: opts.prompt || opts.title,
-        duration: opts.duration,
-        mode: opts.mode,
-        aspect_ratio: opts.aspect_ratio,
-        onStep,
-      })
+          creativeId: creative.id,
+          prompt: opts.prompt || opts.title,
+          duration: opts.duration,
+          mode: opts.mode,
+          aspect_ratio: opts.aspect_ratio,
+          onStep,
+        })
       } catch (err) {
-        // Cleanup orphaned draft row - mark as error so it doesn't silently sit in 'draft' state
+        // Cleanup orphaned draft row — mark as error so it doesn't silently sit in 'draft' state
         await updateCreativeStatus(creative.id, 'error').catch(() => {})
         qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
         throw err
@@ -392,14 +403,17 @@ function usePostToX() {
           qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
           return result
         }
-        // API returned success:false 2013 persist ready_to_post then trigger manual fallback
+        // API returned success:false – persist ready_to_post then trigger manual fallback
         await updateCreativeStatus(opts.creativeId, 'ready_to_post').catch((e) =>
           console.error('[usePostToX] Failed to persist ready_to_post on success:false:', e)
         )
         qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
         return openManualPostFallback(opts.caption || '', result.error)
-      } catch {
-        // API completely unavailable â trigger manual fallback
+      } catch (err) {
+        // API completely unavailable – persist ready_to_post status before fallback
+        await updateCreativeStatus(opts.creativeId, 'ready_to_post').catch((e) =>
+          console.error('[usePostToX] Failed to persist ready_to_post on exception:', e)
+        )
         return openManualPostFallback(opts.caption || '', 'API unavailable')
       }
     },
@@ -431,6 +445,33 @@ function DevModeBadge() {
   )
 }
 
+function MonetizationBadge({ url, product }: { url?: string | null; product?: string | null }) {
+  if (!url && !product) return null
+  return (
+    <a
+      href={url || '#'}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-lumina-gold/20 border border-lumina-gold/30 text-lumina-gold text-[9px] font-bold hover:bg-lumina-gold/30 transition-colors"
+      onClick={e => e.stopPropagation()}
+    >
+      💰 {product ? product.slice(0, 20) : 'Product link'}
+    </a>
+  )
+}
+
+function RetryBadge({ count }: { count?: number }) {
+  if (!count || count === 0) return null
+  return (
+    <span className={clsx(
+      'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold',
+      count >= 3 ? 'bg-red-500/20 border border-red-500/30 text-red-400' : 'bg-orange-500/20 border border-orange-500/30 text-orange-400'
+    )}>
+      ↻ {count}/3
+    </span>
+  )
+}
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     live: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
@@ -438,6 +479,7 @@ function StatusBadge({ status }: { status: string }) {
     ready_to_post: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
     posted: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
     testing: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+    queued: 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30',
     draft: 'bg-zinc-700/40 text-zinc-400 border border-zinc-600/30',
     paused: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
     failed: 'bg-red-500/20 text-red-400 border border-red-500/30',
@@ -501,6 +543,9 @@ function DebugPanel({ creative }: { creative: UgcCreative }) {
           <div><span className="text-zinc-500">hook_used:</span> <span className="text-purple-400 break-all">{creative.hook_used || 'null'}</span></div>
           <div><span className="text-zinc-500">hook_score:</span> <span className="text-zinc-400">{creative.hook_score ?? 'null'}</span></div>
           <div><span className="text-zinc-500">cta_used:</span> <span className="text-sky-400">{creative.cta_used || 'null'}</span></div>
+          <div><span className="text-zinc-500">retry_count:</span> <span className="text-orange-400">{creative.retry_count ?? 0}</span></div>
+          {creative.error_reason && <div><span className="text-zinc-500">error_reason:</span> <span className="text-red-400 break-all">{creative.error_reason}</span></div>}
+          {creative.monetization_url && <div><span className="text-zinc-500">monetization:</span> <a href={creative.monetization_url} target="_blank" rel="noreferrer" className="text-lumina-gold underline break-all">{creative.monetization_product || creative.monetization_url}</a></div>}
           <div><span className="text-zinc-500">clicks:</span> <span className="text-zinc-400">{creative.clicks ?? 0}</span> | <span className="text-zinc-500">conversions:</span> <span className="text-zinc-400">{creative.conversions ?? 0}</span></div>
           <div><span className="text-zinc-500">distributed_to:</span> <span className="text-zinc-400">{JSON.stringify(creative.distributed_to || [])}</span></div>
           {creative.hooks && creative.hooks.length > 0 && (
@@ -719,7 +764,7 @@ function AutoRunnerPanel() {
           )} />
           <span className="text-sm font-bold text-lumina-text">Autonomous Engine</span>
           <span className="text-[10px] font-mono text-lumina-dim">
-            {running ? 'RUNNING â 3 creatives every 15 min' : 'STOPPED'}
+            {running ? 'RUNNING â queue mode, 1 job at a time' : 'STOPPED'}
           </span>
         </div>
         <button
@@ -733,16 +778,42 @@ function AutoRunnerPanel() {
         >
           {running ? <><StopCircle size={12} /> Stop Engine</> : <><Power size={12} /> Start Engine</>}
         </button>
+        {running && (
+          <button
+            onClick={() => controlRef.current?.enqueueNow?.()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 border border-indigo-500/30 transition-all"
+            title="Add 3 new creatives to queue immediately"
+          >
+            <Zap size={12} /> Enqueue 3
+          </button>
+        )}
       </div>
 
       {state && (
         <div className="p-4">
           {/* Daily Progress */}
-          <div className="grid grid-cols-5 gap-3 mb-4">
+          {/* Rate limit banner */}
+          {state.rateLimitedUntil && new Date(state.rateLimitedUntil) > new Date() && (
+            <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs">
+              <AlertCircle size={12} className="flex-shrink-0 animate-pulse" />
+              <span>Rate limited — resuming at {state.rateLimitedUntil.slice(11, 19)}</span>
+            </div>
+          )}
+          {state.currentlyProcessing && (
+            <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-lumina-pulse/10 border border-lumina-pulse/20 text-lumina-pulse text-xs">
+              <Loader2 size={12} className="flex-shrink-0 animate-spin" />
+              <span>Processing: {state.currentlyProcessing.slice(0, 8)}...</span>
+            </div>
+          )}
+          <div className="grid grid-cols-6 gap-2 mb-4">
+            <div className="text-center">
+              <div className="text-[10px] text-lumina-dim">Queued</div>
+              <div className="text-lg font-bold font-mono text-indigo-400">{state.queuedCount ?? 0}</div>
+            </div>
             <div className="text-center">
               <div className="text-[10px] text-lumina-dim">Generated</div>
               <div className="text-lg font-bold font-mono text-lumina-text">{state.todayGenerated}</div>
-              <div className="text-[9px] text-lumina-muted">/ {state.dailyGoal}</div>
+              <div className="text-[9px] text-lumina-muted">/{state.dailyGoal}</div>
             </div>
             <div className="text-center">
               <div className="text-[10px] text-lumina-dim">Ready</div>
@@ -800,6 +871,7 @@ function AutoRunnerPanel() {
                   <span className={clsx(
                     l.level === 'success' && 'text-emerald-400',
                     l.level === 'error' && 'text-red-400',
+                    l.level === 'warn' && 'text-amber-400',
                     l.level === 'info' && 'text-zinc-400',
                   )}>{l.msg}</span>
                 </div>
@@ -1040,9 +1112,11 @@ function CreativeCard({ creative, onDelete }: { creative: UgcCreative; onDelete:
             <span className="text-sm text-lumina-text font-medium truncate">{creative.title}</span>
             <StatusBadge status={effectiveStatus} />
             {isDevMode && <DevModeBadge />}
+            <RetryBadge count={creative.retry_count} />
             {creative.hook_score && creative.hook_score > 70 && (
               <span className="text-[9px] text-purple-400 font-bold">VIRAL {creative.hook_score}</span>
             )}
+            <MonetizationBadge url={creative.monetization_url} product={creative.monetization_product} />
           </div>
           <div className="text-xs text-lumina-dim">
             {creative.platform} | {creative.tool}

@@ -453,13 +453,60 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+
+// ─── Follow-up Helpers ────────────────────────────────────────────────────────
+
+/** True if lead is overdue for follow-up (>24h since last contact, still in proposal/negotiation) */
+function isFollowUpOverdue(lead: Lead): boolean {
+  if (!['proposal', 'negotiation'].includes(lead.stage)) return false
+  const last = lead.lastContact || lead.createdAt
+  if (!last) return false
+  const hoursSince = (Date.now() - new Date(last).getTime()) / 3_600_000
+  return hoursSince > 24
+}
+
+/** Mark a lead as contacted (resets follow-up clock) */
+async function markLeadContacted(leadId: string, qc: ReturnType<typeof useQueryClient>): Promise<void> {
+  const now = new Date().toISOString()
+  const followUpAt = new Date(Date.now() + 24 * 3_600_000).toISOString()
+  const { error } = await supabase
+    .from('leads')
+    .update({
+      last_contacted_at: now,
+      follow_up_at: followUpAt,
+      contact_count: supabase.rpc('increment', { row_id: leadId }) as unknown as number,
+    })
+    .eq('id', leadId)
+  // Simpler version without RPC increment:
+  const { data: current } = await supabase
+    .from('leads')
+    .select('contact_count')
+    .eq('id', leadId)
+    .single()
+  await supabase.from('leads').update({
+    last_contacted_at: now,
+    follow_up_at: followUpAt,
+    contact_count: ((current?.contact_count as number) || 0) + 1,
+  }).eq('id', leadId)
+  if (!error) qc.invalidateQueries({ queryKey: ['leads'] })
+}
+
 // ─── Lead Card ────────────────────────────────────────────────────────────────
 
 function LeadCard({ lead }: { lead: Lead }) {
-  const [showModal,  setShowModal]  = useState(false)
-  const [expanded,   setExpanded]   = useState(false)
+  const qc = useQueryClient()
+  const [showModal,    setShowModal]    = useState(false)
+  const [expanded,     setExpanded]     = useState(false)
+  const [contacting,   setContacting]   = useState(false)
   const cfg = STAGE_CONFIG[lead.stage] ?? STAGE_CONFIG.new
   const hasLinks = lead.proposalUrl || lead.contractUrl || lead.invoiceUrl || lead.loomUrl
+  const overdue = isFollowUpOverdue(lead)
+
+  const handleMarkContacted = async () => {
+    setContacting(true)
+    await markLeadContacted(lead.id, qc)
+    setContacting(false)
+  }
 
   return (
     <>
@@ -473,7 +520,14 @@ function LeadCard({ lead }: { lead: Lead }) {
             </div>
             {lead.company && <div className="text-lumina-muted text-[10px] mt-0.5">{lead.company}</div>}
           </div>
-          <span className={clsx('badge flex-shrink-0', cfg.color)}>{cfg.label}</span>
+          <div className="flex flex-col items-end gap-1">
+            <span className={clsx('badge flex-shrink-0', cfg.color)}>{cfg.label}</span>
+            {overdue && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/30 text-orange-400 text-[9px] font-bold animate-pulse">
+                ⏰ FOLLOW UP
+              </span>
+            )}
+          </div>
         </div>
 
         <ScoreBar score={lead.score} />
@@ -533,9 +587,9 @@ function LeadCard({ lead }: { lead: Lead }) {
           </div>
         )}
 
-        <div className="flex gap-2 mt-3">
+        <div className="flex gap-2 mt-3 flex-wrap">
           <button
-            className="btn-pulse text-xs py-1.5 flex-1 flex items-center justify-center gap-1"
+            className="btn-pulse text-xs py-1.5 flex-1 flex items-center justify-center gap-1 min-w-[120px]"
             onClick={() => setShowModal(true)}
           >
             <Send size={12} />
@@ -548,6 +602,20 @@ function LeadCard({ lead }: { lead: Lead }) {
               Pay
             </a>
           )}
+          <button
+            onClick={handleMarkContacted}
+            disabled={contacting}
+            className={clsx(
+              'text-xs py-1.5 px-3 rounded-lg border flex items-center gap-1 transition-all',
+              overdue
+                ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 hover:bg-orange-500/30'
+                : 'bg-lumina-bg text-lumina-dim border-lumina-border hover:border-lumina-pulse/40 hover:text-lumina-pulse'
+            )}
+            title="Mark as contacted — resets 24h follow-up timer"
+          >
+            {contacting ? <Loader size={11} className="animate-spin" /> : <CheckCircle size={11} />}
+            Contacted
+          </button>
         </div>
       </div>
     </>
@@ -567,6 +635,7 @@ export default function FunnelAgent() {
     : 0
   const wonLeads      = leads.filter(l => l.stage === 'won')
   const wonValue      = wonLeads.reduce((s, l) => s + l.estimatedValue, 0)
+  const overdueCount  = leads.filter(isFollowUpOverdue).length
 
   return (
     <div className="space-y-6">
