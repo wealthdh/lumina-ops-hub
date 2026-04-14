@@ -306,7 +306,9 @@ function useGenerateAndRun() {
       qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
       onStep?.('inserted', `Row created: ${creative.id.slice(0, 8)}... | Hook: "${captionData.hookUsed.slice(0, 40)}"`)
 
-      const result = await runPipeline.mutateAsync({
+      let result
+      try {
+        result = await runPipeline.mutateAsync({
         creativeId: creative.id,
         prompt: opts.prompt || opts.title,
         duration: opts.duration,
@@ -314,6 +316,12 @@ function useGenerateAndRun() {
         aspect_ratio: opts.aspect_ratio,
         onStep,
       })
+      } catch (err) {
+        // Cleanup orphaned draft row - mark as error so it doesn't silently sit in 'draft' state
+        await updateCreativeStatus(creative.id, 'error').catch(() => {})
+        qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
+        throw err
+      }
 
       return { creative, result }
     },
@@ -384,7 +392,11 @@ function usePostToX() {
           qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
           return result
         }
-        // API returned success:false â trigger manual fallback
+        // API returned success:false 2013 persist ready_to_post then trigger manual fallback
+        await updateCreativeStatus(opts.creativeId, 'ready_to_post').catch((e) =>
+          console.error('[usePostToX] Failed to persist ready_to_post on success:false:', e)
+        )
+        qc.invalidateQueries({ queryKey: ['ugc_creatives'] })
         return openManualPostFallback(opts.caption || '', result.error)
       } catch {
         // API completely unavailable â trigger manual fallback
