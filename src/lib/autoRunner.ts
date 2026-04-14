@@ -74,6 +74,9 @@ export interface RunnerConfig {
   kill_switch_reason?: string | null
   dynamic_exploration?: boolean
   current_exploration_floor?: number | null  // optimizer-computed effective floor
+  // Phase 5: validation mode (read only)
+  system_mode?: string               // 'test' | 'live'
+  ema_alpha?: number
 }
 
 const DEFAULT_CONFIG: RunnerConfig = {
@@ -108,11 +111,13 @@ export async function getRunnerConfig(): Promise<RunnerConfig> {
         max_family_weight:           Number(data.max_family_weight)   ?? DEFAULT_CONFIG.max_family_weight,
         daily_generation_goal:       data.daily_generation_goal       ?? DEFAULT_CONFIG.daily_generation_goal,
         reality_mode_enabled:        data.reality_mode_enabled        ?? DEFAULT_CONFIG.reality_mode_enabled,
-        // Phase 4: stability — autoRunner reads these but NEVER writes them
+        // Phase 4+5: stability + validation — autoRunner reads these but NEVER writes them
         kill_switch_active:          data.kill_switch_active          ?? false,
         kill_switch_reason:          data.kill_switch_reason          ?? null,
         dynamic_exploration:         data.dynamic_exploration         ?? true,
         current_exploration_floor:   data.current_exploration_floor   ?? null,
+        system_mode:                 data.system_mode                 ?? 'live',
+        ema_alpha:                   Number(data.ema_alpha)           ?? 0.20,
       }
       configCacheTs = Date.now()
       return configCache
@@ -744,15 +749,23 @@ async function tick(onUpdate: (state: AutoRunnerState) => void): Promise<void> {
 
   log(`Tick ${globalState.cycleCount}`, 'info')
 
-  // ── Phase 4: Kill switch guard ────────────────────────────────────────────
+  // ── Phase 4+5: Kill switch + test mode guards ────────────────────────────
   // autoRunner is a pure EXECUTOR — it reads policy, never writes it.
-  // If the optimizer triggers a kill switch, we freeze until it's cleared.
   try {
     const cfg = await getRunnerConfig()
+
+    // TEST MODE: log decisions but skip destructive actions (pause/kill/clone)
+    if (cfg.system_mode === 'test') {
+      log(`🧪 TEST MODE active — posting/generation paused (validation only)`, 'warn')
+      onUpdate(globalState)
+      return  // In test mode, autoRunner observes but does not execute
+    }
+
+    // Kill switch: freeze until optimizer clears it
     if (cfg.kill_switch_active) {
       log(`⛔ KILL SWITCH ACTIVE: ${cfg.kill_switch_reason ?? 'optimizer triggered'} — tick paused`, 'error')
       onUpdate(globalState)
-      return  // skip all processing; optimizer must clear the switch to resume
+      return
     }
   } catch { /* allow tick to proceed if config fetch fails */ }
 

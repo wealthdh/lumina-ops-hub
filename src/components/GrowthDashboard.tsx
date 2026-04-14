@@ -329,6 +329,10 @@ interface HookFamilyRow {
   status: string
   rank: number
   exploration_eligible: boolean
+  // Phase 5: EMA smoothed signals
+  ema_cvr: number | null
+  ema_ctr: number | null
+  ema_revenue_per_click: number | null
 }
 
 interface RunnerConfigRow {
@@ -359,6 +363,14 @@ interface RunnerConfigRow {
   current_entropy: number | null
   current_exploration_floor: number | null
   total_cumulative_regret: number
+  // Phase 5: validation mode
+  system_mode: string         // 'test' | 'live'
+  ema_alpha: number
+  ema_entropy: number | null
+  ema_entropy_n: number
+  entropy_ema_alpha: number
+  floor_smoothing_alpha: number
+  max_weight_shift_per_cycle: number
 }
 
 interface OptimizerLogEntry {
@@ -398,19 +410,22 @@ function useHookFamilies() {
     queryFn: async () => {
       const { data } = await supabase
         .from('hook_families')
-        .select('id, display_name, total_creatives, posted_count, total_views, total_clicks, total_conversions, real_conversions, total_revenue, avg_ctr, cvr, avg_roas, avg_hook_score, revenue_per_click, posting_weight, generation_weight, business_score, status, rank, exploration_eligible')
+        .select('id, display_name, total_creatives, posted_count, total_views, total_clicks, total_conversions, real_conversions, total_revenue, avg_ctr, cvr, avg_roas, avg_hook_score, revenue_per_click, posting_weight, generation_weight, business_score, status, rank, exploration_eligible, ema_cvr, ema_ctr, ema_revenue_per_click')
         .order('rank', { ascending: true })
       return (data || []).map(r => ({
         ...r,
-        real_conversions:  Number(r.real_conversions  ?? 0),
-        business_score:    Number(r.business_score    ?? 0),
-        revenue_per_click: Number(r.revenue_per_click ?? 0),
-        avg_roas:          Number(r.avg_roas           ?? 0),
-        avg_ctr:           Number(r.avg_ctr            ?? 0),
-        cvr:               Number(r.cvr                ?? 0),
-        posting_weight:    Number(r.posting_weight     ?? 0),
-        generation_weight: Number(r.generation_weight  ?? 0),
+        real_conversions:     Number(r.real_conversions  ?? 0),
+        business_score:       Number(r.business_score    ?? 0),
+        revenue_per_click:    Number(r.revenue_per_click ?? 0),
+        avg_roas:             Number(r.avg_roas           ?? 0),
+        avg_ctr:              Number(r.avg_ctr            ?? 0),
+        cvr:                  Number(r.cvr                ?? 0),
+        posting_weight:       Number(r.posting_weight     ?? 0),
+        generation_weight:    Number(r.generation_weight  ?? 0),
         exploration_eligible: r.exploration_eligible ?? true,
+        ema_cvr:              r.ema_cvr              != null ? Number(r.ema_cvr)              : null,
+        ema_ctr:              r.ema_ctr              != null ? Number(r.ema_ctr)              : null,
+        ema_revenue_per_click: r.ema_revenue_per_click != null ? Number(r.ema_revenue_per_click) : null,
       })) as HookFamilyRow[]
     },
     staleTime: 30_000,
@@ -454,6 +469,14 @@ function useRunnerConfig() {
         current_entropy:             data?.current_entropy             != null ? Number(data.current_entropy) : null,
         current_exploration_floor:   data?.current_exploration_floor   != null ? Number(data.current_exploration_floor) : null,
         total_cumulative_regret:     Number(data?.total_cumulative_regret)     ?? 0,
+        // Phase 5: validation mode
+        system_mode:                 data?.system_mode                ?? 'live',
+        ema_alpha:                   Number(data?.ema_alpha)          ?? 0.20,
+        ema_entropy:                 data?.ema_entropy                != null ? Number(data.ema_entropy) : null,
+        ema_entropy_n:               data?.ema_entropy_n              ?? 0,
+        entropy_ema_alpha:           Number(data?.entropy_ema_alpha)  ?? 0.30,
+        floor_smoothing_alpha:       Number(data?.floor_smoothing_alpha) ?? 0.15,
+        max_weight_shift_per_cycle:  Number(data?.max_weight_shift_per_cycle) ?? 0.10,
       } as RunnerConfigRow
     },
     staleTime: 30_000,
@@ -512,6 +535,40 @@ function useRegretLog(limit = 30) {
     },
     staleTime: 60_000,
     refetchInterval: 60_000,
+  })
+}
+
+// ─── Pending Actions (test mode) ─────────────────────────────────────────────
+
+interface PendingAction {
+  id: string
+  created_at: string
+  cycle_number: number
+  action_type: string
+  family_id: string | null
+  display_name: string | null
+  proposed_value: number | null
+  current_value: number | null
+  reason: string | null
+  status: string    // 'pending' | 'approved' | 'rejected' | 'auto_approved'
+  reviewed_at: string | null
+  payload: Record<string, unknown>
+}
+
+function usePendingActions() {
+  return useQuery<PendingAction[]>({
+    queryKey: ['pending_actions'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pending_actions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (error) return []
+      return (data ?? []) as PendingAction[]
+    },
+    staleTime: 15_000,
+    refetchInterval: 15_000,
   })
 }
 
@@ -768,11 +825,13 @@ export default function GrowthDashboard() {
   const { data: families = [], refetch: refetchFamilies } = useHookFamilies()
   const { data: runnerCfg, refetch: refetchConfig }       = useRunnerConfig()
   const { data: optimizerLog = [], refetch: refetchLog }  = useOptimizerLog(20)
-  const { data: regretLog    = [], refetch: refetchRegret } = useRegretLog(30)
+  const { data: regretLog    = [], refetch: refetchRegret }   = useRegretLog(30)
+  const { data: pendingActions = [], refetch: refetchPending } = usePendingActions()
   const [runningOptimizer, setRunningOptimizer]           = useState(false)
   const [optimizerStatus,  setOptimizerStatus]            = useState<string | null>(null)
   const [resettingKS,      setResettingKS]                = useState(false)
   const [savingSnapshot,   setSavingSnapshot]             = useState(false)
+  const [togglingMode,     setTogglingMode]               = useState(false)
 
   // Prefer real conversion_events data; fall back to ugc_creatives aggregates
   // Real revenue = sum of confirmed Stripe payments
@@ -801,7 +860,8 @@ export default function GrowthDashboard() {
   const maxRev = Math.max(...creatives.map(c => c.revenue_usd), 0.01)
 
   // ── Decision Engine ───────────────────────────────────────────────────────
-  const cfg: RunnerConfigRow = runnerCfg ?? { use_real_metrics: true, exploration_floor: 0.25, clone_threshold_conversions: 20, max_family_weight: 0.60, daily_generation_goal: 50, reality_mode_enabled: true, auto_optimize_enabled: false, optimize_interval_hours: 4, max_weight_delta_per_cycle: 0.05, ucb1_exploration_constant: 1.41, min_views_before_adjust: 100, optimizer_cycle_count: 0, last_optimized_at: null, kill_switch_active: false, kill_switch_reason: null, kill_switch_triggered_at: null, stable_snapshot_at: null, revenue_drop_threshold: 0.20, entropy_collapse_threshold: 0.25, dynamic_exploration: true, entropy_boost_factor: 0.50, variance_discount_factor: 0.20, current_entropy: null, current_exploration_floor: null, total_cumulative_regret: 0 }
+  const cfg: RunnerConfigRow = runnerCfg ?? { use_real_metrics: true, exploration_floor: 0.25, clone_threshold_conversions: 20, max_family_weight: 0.60, daily_generation_goal: 50, reality_mode_enabled: true, auto_optimize_enabled: false, optimize_interval_hours: 4, max_weight_delta_per_cycle: 0.05, ucb1_exploration_constant: 1.41, min_views_before_adjust: 100, optimizer_cycle_count: 0, last_optimized_at: null, kill_switch_active: false, kill_switch_reason: null, kill_switch_triggered_at: null, stable_snapshot_at: null, revenue_drop_threshold: 0.20, entropy_collapse_threshold: 0.25, dynamic_exploration: true, entropy_boost_factor: 0.50, variance_discount_factor: 0.20, current_entropy: null, current_exploration_floor: null, total_cumulative_regret: 0, system_mode: 'live', ema_alpha: 0.20, ema_entropy: null, ema_entropy_n: 0, entropy_ema_alpha: 0.30, floor_smoothing_alpha: 0.15, max_weight_shift_per_cycle: 0.10 }
+  const isTestMode = cfg.system_mode === 'test'
   const decisionActions = computeDecisionActions(families, cfg)
   const driftAlerts     = computeDriftAlerts(families, cfg)
   const impactFam       = families.find(f => f.id === impactFamily) ?? families[0] ?? null
@@ -910,6 +970,29 @@ export default function GrowthDashboard() {
     } finally {
       setSavingSnapshot(false)
     }
+  }
+
+  // ── Toggle system mode (test ↔ live) ──────────────────────────────────────
+  async function toggleSystemMode() {
+    setTogglingMode(true)
+    const next = cfg.system_mode === 'test' ? 'live' : 'test'
+    try {
+      await supabase.from('auto_runner_config')
+        .update({ system_mode: next })
+        .eq('id', 'singleton')
+      await refetchConfig()
+    } finally {
+      setTogglingMode(false)
+    }
+  }
+
+  // ── Approve / reject pending action ──────────────────────────────────────
+  async function reviewPendingAction(id: string, approve: boolean) {
+    await supabase.from('pending_actions').update({
+      status: approve ? 'approved' : 'rejected',
+      reviewed_at: new Date().toISOString(),
+    }).eq('id', id)
+    await refetchPending()
   }
 
   const styles = {
@@ -1476,6 +1559,42 @@ export default function GrowthDashboard() {
       {/* ── ENGINE TAB ── */}
       {tab === 'engine' && (
         <>
+          {/* ══ TEST MODE BANNER ════════════════════════════════════════ */}
+          <div style={{ ...styles.card, background: isTestMode ? 'rgba(245,158,11,0.10)' : 'rgba(34,197,94,0.06)', border: `2px solid ${isTestMode ? 'rgba(245,158,11,0.7)' : 'rgba(34,197,94,0.4)'}`, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' as const }}>
+              <div style={{ fontSize: 22 }}>{isTestMode ? '🧪' : '🟢'}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 15, color: isTestMode ? '#f59e0b' : '#22c55e', letterSpacing: 0.5 }}>
+                  {isTestMode ? 'TEST MODE — Validation Active' : 'LIVE MODE — Full Execution Active'}
+                </div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
+                  {isTestMode
+                    ? 'AutoRunner paused. Optimizer logs decisions as pending_actions. No destructive operations execute. Safe to observe.'
+                    : 'AutoRunner executing. Optimizer promotes weights, applies policy, executes postings and cloning.'}
+                </div>
+                {isTestMode && (
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                    EMA signals: α={cfg.ema_alpha} · Entropy EMA α={cfg.entropy_ema_alpha} · Floor smoothing ±{(cfg.floor_smoothing_alpha*100).toFixed(0)}%/cycle · Weight clamp ±{(cfg.max_weight_shift_per_cycle*100).toFixed(0)}%
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, alignItems: 'flex-end' }}>
+                {isTestMode && (
+                  <span style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,0.12)', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                    {pendingActions.filter(a => a.status === 'pending').length} pending actions awaiting review
+                  </span>
+                )}
+                <button
+                  onClick={toggleSystemMode}
+                  disabled={togglingMode}
+                  style={{ padding: '8px 18px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 13, cursor: togglingMode ? 'not-allowed' : 'pointer', opacity: togglingMode ? 0.7 : 1, background: isTestMode ? '#22c55e' : '#f59e0b', color: '#000' }}
+                >
+                  {togglingMode ? '⏳' : isTestMode ? '▶ Switch to LIVE' : '🧪 Switch to TEST'}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* ── Kill Switch Banner ──────────────────────────────────────── */}
           {cfg.kill_switch_active && (
             <div style={{ ...styles.card, background: 'rgba(239,68,68,0.12)', border: '2px solid rgba(239,68,68,0.70)', marginBottom: 16 }}>
@@ -2089,13 +2208,108 @@ export default function GrowthDashboard() {
             )}
           </div>
 
+          {/* ══ PENDING ACTIONS PANEL (test mode) ════════════════════════════ */}
+          {(isTestMode || pendingActions.length > 0) && (
+            <div style={{ ...styles.card, border: '1px solid rgba(245,158,11,0.25)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>🔬 Pending Actions — Test Mode Review Queue</span>
+                {pendingActions.filter(a => a.status === 'pending').length > 0 && (
+                  <span style={{ ...styles.badge('#f59e0b') as React.CSSProperties, fontSize: 11 }}>
+                    {pendingActions.filter(a => a.status === 'pending').length} awaiting
+                  </span>
+                )}
+                <button
+                  onClick={() => refetchPending()}
+                  style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: '#94a3b8', fontSize: 11, cursor: 'pointer' }}
+                >↻ Refresh</button>
+              </div>
+              {pendingActions.length === 0 ? (
+                <div style={{ textAlign: 'center' as const, color: '#475569', fontSize: 13, padding: '24px 0' }}>
+                  No pending actions — they appear here when the optimizer runs in TEST MODE.
+                </div>
+              ) : (
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      {['Cycle', 'Type', 'Family', 'Current', 'Proposed', 'Reason', 'Status', 'Action'].map(h => (
+                        <th key={h} style={styles.th}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingActions.map((pa) => {
+                      const isPending  = pa.status === 'pending'
+                      const isApproved = pa.status === 'approved'
+                      const isRejected = pa.status === 'rejected'
+                      const statusColor = isPending ? '#f59e0b' : isApproved ? '#22c55e' : isRejected ? '#ef4444' : '#64748b'
+                      const typeColor   = pa.action_type === 'KILL_SWITCH' ? '#ef4444'
+                        : pa.action_type.includes('INCREASE') ? '#22c55e'
+                        : pa.action_type.includes('REDUCE') || pa.action_type.includes('PAUSE') ? '#f59e0b'
+                        : '#a78bfa'
+                      return (
+                        <tr key={pa.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: isPending ? 1 : 0.65 }}>
+                          <td style={styles.td}><span style={{ color: '#a78bfa', fontWeight: 600 }}>#{pa.cycle_number}</span></td>
+                          <td style={styles.td}>
+                            <span style={{ ...styles.badge(typeColor) as React.CSSProperties, fontSize: 10, whiteSpace: 'nowrap' as const }}>
+                              {pa.action_type}
+                            </span>
+                          </td>
+                          <td style={{ ...styles.td, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                            {pa.display_name ?? pa.family_id ?? '—'}
+                          </td>
+                          <td style={styles.td}>
+                            {pa.current_value != null ? (
+                              <span style={{ color: '#94a3b8' }}>{(pa.current_value * 100).toFixed(1)}%</span>
+                            ) : '—'}
+                          </td>
+                          <td style={styles.td}>
+                            {pa.proposed_value != null ? (
+                              <span style={{ color: '#06b6d4', fontWeight: 600 }}>{(pa.proposed_value * 100).toFixed(1)}%</span>
+                            ) : '—'}
+                          </td>
+                          <td style={{ ...styles.td, color: '#94a3b8', fontSize: 11, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                            {pa.reason ?? '—'}
+                          </td>
+                          <td style={styles.td}>
+                            <span style={{ ...styles.badge(statusColor) as React.CSSProperties, fontSize: 10 }}>
+                              {pa.status}
+                            </span>
+                          </td>
+                          <td style={styles.td}>
+                            {isPending ? (
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button
+                                  onClick={() => reviewPendingAction(pa.id, true)}
+                                  style={{ padding: '3px 10px', borderRadius: 5, border: '1px solid #22c55e44', background: 'rgba(34,197,94,0.10)', color: '#22c55e', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                >✓ Apply</button>
+                                <button
+                                  onClick={() => reviewPendingAction(pa.id, false)}
+                                  style={{ padding: '3px 10px', borderRadius: 5, border: '1px solid #ef444444', background: 'rgba(239,68,68,0.10)', color: '#ef4444', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+                                >✕ Reject</button>
+                              </div>
+                            ) : (
+                              <span style={{ color: '#475569', fontSize: 11 }}>
+                                {pa.reviewed_at ? new Date(pa.reviewed_at).toLocaleTimeString() : '—'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
           {/* ── HOOK FAMILIES TABLE ──────────────────────────────────────────── */}
           <div style={styles.card}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>📊 Hook Family Performance (Live DB)</div>
+            <div style={{ overflowX: 'auto' as const }}>
             <table style={styles.table}>
               <thead>
                 <tr>
-                  {['Family', 'Rank', 'Creatives', 'Weight', 'CVR', 'ROAS', 'Real Conv', 'Revenue', 'Status'].map(h => (
+                  {['Family', 'Rank', 'Creatives', 'Weight', 'CVR', 'EMA CVR', 'EMA CTR', 'EMA $/Click', 'ROAS', 'Real Conv', 'Revenue', 'Status'].map(h => (
                     <th key={h} style={styles.th}>{h}</th>
                   ))}
                 </tr>
@@ -2104,15 +2318,40 @@ export default function GrowthDashboard() {
                 {families.map(f => {
                   const statusCol = f.status === 'active' ? '#22c55e' : f.status === 'paused' ? '#ef4444' : '#f59e0b'
                   const hasEnough = f.real_conversions >= cfg.clone_threshold_conversions
+                  // EMA drift indicator: compare ema vs raw (>5% delta = flagged)
+                  const emaCvrDrift = f.ema_cvr != null && Math.abs(f.ema_cvr - f.cvr) > 0.5
                   return (
                     <tr key={f.id}>
-                      <td style={{ ...styles.td, fontWeight: 600, color: '#e2e8f0', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                      <td style={{ ...styles.td, fontWeight: 600, color: '#e2e8f0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
                         {f.display_name}
                       </td>
                       <td style={{ ...styles.td, color: '#a78bfa' }}>#{f.rank}</td>
                       <td style={styles.td}>{f.total_creatives}</td>
                       <td style={{ ...styles.td, color: '#06b6d4' }}>{(f.posting_weight * 100).toFixed(0)}%</td>
                       <td style={{ ...styles.td, color: f.cvr > 2.5 ? '#22c55e' : f.cvr > 1.5 ? '#f59e0b' : '#ef4444' }}>{f.cvr.toFixed(2)}%</td>
+                      {/* EMA CVR — optimizer's smoothed view */}
+                      <td style={styles.td}>
+                        {f.ema_cvr != null ? (
+                          <span style={{ color: emaCvrDrift ? '#f59e0b' : '#94a3b8', fontSize: 12 }}>
+                            {f.ema_cvr.toFixed(2)}%
+                            {emaCvrDrift && <span title="EMA drifting from raw CVR" style={{ marginLeft: 3, fontSize: 10 }}>⚡</span>}
+                          </span>
+                        ) : <span style={{ color: '#475569', fontSize: 11 }}>—</span>}
+                      </td>
+                      {/* EMA CTR */}
+                      <td style={styles.td}>
+                        {f.ema_ctr != null ? (
+                          <span style={{ color: '#94a3b8', fontSize: 12 }}>{f.ema_ctr.toFixed(2)}%</span>
+                        ) : <span style={{ color: '#475569', fontSize: 11 }}>—</span>}
+                      </td>
+                      {/* EMA revenue per click */}
+                      <td style={styles.td}>
+                        {f.ema_revenue_per_click != null ? (
+                          <span style={{ color: f.ema_revenue_per_click > 0.5 ? '#22c55e' : '#94a3b8', fontSize: 12 }}>
+                            ${f.ema_revenue_per_click.toFixed(3)}
+                          </span>
+                        ) : <span style={{ color: '#475569', fontSize: 11 }}>—</span>}
+                      </td>
                       <td style={{ ...styles.td, color: f.avg_roas > 2 ? '#22c55e' : '#94a3b8' }}>{f.avg_roas.toFixed(2)}x</td>
                       <td style={{ ...styles.td, color: hasEnough ? '#22c55e' : '#f59e0b' }}>
                         {f.real_conversions}
@@ -2129,6 +2368,7 @@ export default function GrowthDashboard() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
