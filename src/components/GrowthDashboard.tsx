@@ -8,11 +8,25 @@
  *   - Daily posting cadence & peak-hour scheduler
  *   - Click funnel: impressions → clicks → conversions → revenue
  */
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
+
+interface ConversionEvent {
+  id:                 string
+  stripe_event_id:    string
+  creative_id:        string | null
+  attribution_method: string
+  amount_usd:         number
+  product_name:       string | null
+  product_key:        string | null
+  buyer_email:        string | null
+  utm_source:         string | null
+  utm_medium:         string | null
+  processed_at:       string
+}
 
 interface CreativeAnalytic {
   id: string
@@ -227,6 +241,71 @@ function useProductRevenue() {
   })
 }
 
+// ─── Real Stripe conversion data ──────────────────────────────────────────────
+
+function useConversionEvents(limit = 50) {
+  return useQuery<ConversionEvent[]>({
+    queryKey: ['conversion_events', limit],
+    queryFn: async () => {
+      // conversion_events are cross-user (service role writes) — filter by
+      // creatives owned by this user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return []
+
+      // Get this user's creative IDs first
+      const { data: myCreatives } = await supabase
+        .from('ugc_creatives')
+        .select('id')
+        .eq('user_id', user.id)
+
+      const myIds = (myCreatives ?? []).map((c: { id: string }) => c.id)
+
+      // Fetch conversion_events for this user's creatives + unattributed events
+      const { data, error } = await supabase
+        .from('conversion_events')
+        .select('id, stripe_event_id, creative_id, attribution_method, amount_usd, product_name, product_key, buyer_email, utm_source, utm_medium, processed_at')
+        .order('processed_at', { ascending: false })
+        .limit(limit)
+
+      if (error) { console.warn('conversion_events fetch error:', error.message); return [] }
+
+      // Filter client-side to only events for our creatives (or unattributed)
+      return ((data ?? []) as ConversionEvent[]).filter(e =>
+        e.creative_id === null || myIds.includes(e.creative_id)
+      )
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+}
+
+// Aggregate real conversion revenue by product key
+function useRealProductRevenue(convEvents: ConversionEvent[]): ProductRevenue[] {
+  const PRODUCTS: Record<string, string> = {
+    'mt5-gold':   'MT5 Gold Scalper EA ($97)',
+    'polymarket': 'Polymarket Edge Scanner ($47)',
+    'ai-prompt':  'AI Prompt Toolkit ($29)',
+    'ugc-swarm':  'UGC Swarm Templates ($19)',
+    'kelly-pro':  'Kelly Pro Calculator ($14.99)',
+  }
+
+  const map = new Map<string, ProductRevenue>()
+  for (const [key, label] of Object.entries(PRODUCTS)) {
+    map.set(key, { product: label, url_fragment: key, revenue: 0, conversions: 0, creatives: 0 })
+  }
+
+  for (const e of convEvents) {
+    const key = e.product_key
+    if (key && map.has(key)) {
+      const s = map.get(key)!
+      s.revenue     += Number(e.amount_usd ?? 0)
+      s.conversions += 1
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const PLATFORM_ICONS: Record<string, string> = {
@@ -301,7 +380,7 @@ function Sparkline({ data, color = '#22c55e', height = 40 }: { data: number[]; c
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'hooks' | 'platforms' | 'products' | 'cadence'
+type Tab = 'overview' | 'hooks' | 'platforms' | 'products' | 'sales' | 'cadence'
 
 export default function GrowthDashboard() {
   const [tab, setTab] = useState<Tab>('overview')
@@ -312,11 +391,20 @@ export default function GrowthDashboard() {
   const { data: daily = [] } = useDailyRevenue(14)
   const { data: products = [] } = useProductRevenue()
 
-  // Portfolio-level KPIs from top creatives
+  // ── Real Stripe conversion data ──────────────────────────────────────────
+  const { data: convEvents = [], isLoading: loadingConv } = useConversionEvents(100)
+  const realProductRevenue = useRealProductRevenue(convEvents)
+
+  // Prefer real conversion_events data; fall back to ugc_creatives aggregates
+  // Real revenue = sum of confirmed Stripe payments
+  const realRevenue     = convEvents.reduce((s, e) => s + Number(e.amount_usd ?? 0), 0)
+  const realConversions = convEvents.length
+
+  // Portfolio-level KPIs — clicks/views from creatives, revenue/conversions from real events
   const allViews       = creatives.reduce((s, c) => s + c.views,       0)
   const allClicks      = creatives.reduce((s, c) => s + c.clicks,      0)
-  const allConversions = creatives.reduce((s, c) => s + c.conversions,  0)
-  const allRevenue     = creatives.reduce((s, c) => s + c.revenue_usd,  0)
+  const allConversions = realConversions > 0 ? realConversions : creatives.reduce((s, c) => s + c.conversions,  0)
+  const allRevenue     = realRevenue     > 0 ? realRevenue     : creatives.reduce((s, c) => s + c.revenue_usd,  0)
   const avgHook        = creatives.length > 0 ? creatives.reduce((s, c) => s + c.hook_score, 0) / creatives.length : 0
   const overallCTR     = allViews  > 0 ? (allClicks / allViews) * 100 : 0
   const overallCVR     = allClicks > 0 ? (allConversions / allClicks) * 100 : 0
@@ -485,7 +573,7 @@ export default function GrowthDashboard() {
 
       {/* Tabs */}
       <div style={styles.tabs}>
-        {(['overview', 'hooks', 'platforms', 'products', 'cadence'] as Tab[]).map(t => (
+        {(['overview', 'hooks', 'platforms', 'products', 'sales', 'cadence'] as Tab[]).map(t => (
           <button key={t} style={styles.tab(tab === t)} onClick={() => setTab(t)}>
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -564,7 +652,12 @@ export default function GrowthDashboard() {
 
           {/* Funnel visualization */}
           <div style={styles.card}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>🔽 Conversion Funnel</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>🔽 Conversion Funnel</span>
+              <span style={{ fontSize: 11, color: realRevenue > 0 ? '#22c55e' : '#f59e0b', marginLeft: 'auto' }}>
+                {realRevenue > 0 ? `✓ Live Stripe · ${convEvents.length} sales` : '⚠ Simulated · awaiting Stripe'}
+              </span>
+            </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
               {[
                 { label: 'Impressions', value: allViews,       color: '#06b6d4', pct: 100 },
@@ -707,43 +800,126 @@ export default function GrowthDashboard() {
 
       {/* ── PRODUCTS TAB ── */}
       {tab === 'products' && (
-        <div style={styles.card}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>💰 Revenue by Product</div>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Product</th>
-                <th style={styles.th}>Creatives</th>
-                <th style={styles.th}>Conversions</th>
-                <th style={styles.th}>Revenue</th>
-                <th style={styles.th}>Rev / Creative</th>
-                <th style={styles.th}>Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map(p => {
-                const maxProd = Math.max(...products.map(x => x.revenue), 0.01)
-                return (
-                  <tr key={p.url_fragment}>
-                    <td style={{ ...styles.td, fontWeight: 500 }}>{p.product}</td>
-                    <td style={styles.td}>{p.creatives}</td>
-                    <td style={{ ...styles.td, color: '#a78bfa' }}>{p.conversions}</td>
-                    <td style={{ ...styles.td, color: '#22c55e', fontWeight: 700 }}>{fmt$(p.revenue)}</td>
-                    <td style={{ ...styles.td, color: '#f59e0b' }}>{fmt$(p.creatives > 0 ? p.revenue / p.creatives : 0)}</td>
-                    <td style={{ ...styles.td, minWidth: 100 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {miniBar(p.revenue, maxProd, '#22c55e')}
-                        <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>
-                          {allRevenue > 0 ? ((p.revenue / allRevenue) * 100).toFixed(0) : 0}%
-                        </span>
-                      </div>
-                    </td>
+        <>
+          {/* Source indicator */}
+          <div style={{ marginBottom: 10, fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: realRevenue > 0 ? '#22c55e' : '#f59e0b', display: 'inline-block' }} />
+            {realRevenue > 0
+              ? `Live Stripe data · ${convEvents.length} confirmed payments`
+              : 'Simulated data — awaiting first Stripe conversion'}
+          </div>
+          <div style={styles.card}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>💰 Revenue by Product</div>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Product</th>
+                  <th style={styles.th}>Creatives</th>
+                  <th style={styles.th}>Sales</th>
+                  <th style={styles.th}>Revenue</th>
+                  <th style={styles.th}>Rev / Sale</th>
+                  <th style={styles.th}>Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(realRevenue > 0 ? realProductRevenue : products).map(p => {
+                  const displaySet  = realRevenue > 0 ? realProductRevenue : products
+                  const maxProd = Math.max(...displaySet.map(x => x.revenue), 0.01)
+                  return (
+                    <tr key={p.url_fragment}>
+                      <td style={{ ...styles.td, fontWeight: 500 }}>{p.product}</td>
+                      <td style={styles.td}>{p.creatives}</td>
+                      <td style={{ ...styles.td, color: '#a78bfa' }}>{p.conversions}</td>
+                      <td style={{ ...styles.td, color: '#22c55e', fontWeight: 700 }}>{fmt$(p.revenue)}</td>
+                      <td style={{ ...styles.td, color: '#f59e0b' }}>{fmt$(p.conversions > 0 ? p.revenue / p.conversions : 0)}</td>
+                      <td style={{ ...styles.td, minWidth: 100 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {miniBar(p.revenue, maxProd, '#22c55e')}
+                          <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>
+                            {allRevenue > 0 ? ((p.revenue / allRevenue) * 100).toFixed(0) : 0}%
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* ── SALES TAB — Real Stripe conversion feed ── */}
+      {tab === 'sales' && (
+        <>
+          <div style={{ marginBottom: 10, fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: convEvents.length > 0 ? '#22c55e' : '#475569', display: 'inline-block', animation: convEvents.length > 0 ? 'pulse 2s infinite' : 'none' }} />
+            {loadingConv ? 'Loading…' : convEvents.length > 0
+              ? `${convEvents.length} confirmed Stripe payments · ${fmt$(realRevenue)} total`
+              : 'No conversions yet — Stripe webhook will populate this on first sale'}
+          </div>
+
+          {/* KPI row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+            {[
+              { label: 'Total Revenue',      value: fmt$(realRevenue),                              color: '#22c55e' },
+              { label: 'Sales',              value: String(realConversions),                         color: '#a78bfa' },
+              { label: 'Avg Order Value',    value: fmt$(realConversions > 0 ? realRevenue / realConversions : 0), color: '#f59e0b' },
+              { label: 'Attributed Sales',   value: `${convEvents.filter(e => e.creative_id).length} / ${convEvents.length}`, color: '#06b6d4' },
+            ].map(k => (
+              <div key={k.label} style={{ ...styles.card, padding: '12px 14px', marginBottom: 0 }}>
+                <div style={{ fontSize: 11, color: '#64748b' }}>{k.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: k.color, marginTop: 4 }}>{k.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={styles.card}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>💳 Recent Stripe Sales</div>
+            {convEvents.length === 0 ? (
+              <div style={{ color: '#475569', fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
+                No sales yet — your first Stripe payment will appear here instantly via webhook.
+              </div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Time</th>
+                    <th style={styles.th}>Product</th>
+                    <th style={styles.th}>Amount</th>
+                    <th style={styles.th}>Attribution</th>
+                    <th style={styles.th}>UTM Source</th>
+                    <th style={styles.th}>Buyer</th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {convEvents.map(e => (
+                    <tr key={e.id}>
+                      <td style={{ ...styles.td, color: '#64748b', fontSize: 11, whiteSpace: 'nowrap' }}>
+                        {new Date(e.processed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td style={styles.td}>{e.product_name ?? '—'}</td>
+                      <td style={{ ...styles.td, color: '#22c55e', fontWeight: 700 }}>{fmt$(Number(e.amount_usd ?? 0))}</td>
+                      <td style={styles.td}>
+                        <span style={styles.badge(
+                          e.attribution_method === 'metadata'          ? '#22c55e' :
+                          e.attribution_method === 'utm_content'        ? '#06b6d4' :
+                          e.attribution_method?.startsWith('product_map') ? '#f59e0b' : '#64748b'
+                        )}>
+                          {e.attribution_method ?? 'unknown'}
+                        </span>
+                      </td>
+                      <td style={{ ...styles.td, color: '#94a3b8', fontSize: 12 }}>{e.utm_source ?? '—'}</td>
+                      <td style={{ ...styles.td, color: '#64748b', fontSize: 12 }}>
+                        {e.buyer_email ? e.buyer_email.replace(/(.{2}).*(@.*)/, '$1…$2') : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
 
       {/* ── CADENCE TAB ── */}
