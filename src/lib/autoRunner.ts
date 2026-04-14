@@ -568,28 +568,13 @@ async function processNextQueued(onUpdate: (state: AutoRunnerState) => void): Pr
       if (result.success) {
         globalState.todayPosted += 1
         log(`Posted to Twitter: ${result.post_url}`, 'success')
-        // Signal revenue tracking — update DB with posted_at
+        // Update DB with posted_at — income_entries written only when Stripe confirms real revenue
         await supabase.from('ugc_creatives')
           .update({ status: 'posted', posted_at: new Date().toISOString() })
           .eq('id', queued.id)
-        // ─── INCOME TRACKING: create placeholder income entry ──────────────
-        try {
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            await supabase.from('income_entries').insert({
-              user_id: user.id,
-              source: 'UGC Content',
-              amount: 0,  // placeholder — updated when real conversion happens
-              description: `Posted: ${queued.title} → ${queued.monetization_url || 'no link'}`,
-              entry_date: new Date().toISOString().slice(0, 10),
-              is_placeholder: true,
-              creative_id: queued.id,
-            })
-            log(`Income entry created for ${queued.id.slice(0, 8)}`, 'info')
-          }
-        } catch (incomeErr) {
-          log(`Income tracking warn: ${incomeErr instanceof Error ? incomeErr.message : String(incomeErr)}`, 'warn')
-        }
+        // NOTE: No placeholder income_entry inserted here.
+        // income_entries.amount has CHECK (amount > 0) — $0 rows are rejected.
+        // Real income is written by api/stripe-webhook.js on checkout.session.completed.
       } else {
         log(`Twitter post failed (${result.error}) — keeping as ready`, 'warn')
       }
@@ -751,6 +736,7 @@ async function tick(onUpdate: (state: AutoRunnerState) => void): Promise<void> {
 
   // ── Phase 4+5: Kill switch + test mode guards ────────────────────────────
   // autoRunner is a pure EXECUTOR — it reads policy, never writes it.
+  // SAFETY: if config cannot be read, pause the tick rather than proceeding blindly.
   try {
     const cfg = await getRunnerConfig()
 
@@ -767,7 +753,12 @@ async function tick(onUpdate: (state: AutoRunnerState) => void): Promise<void> {
       onUpdate(globalState)
       return
     }
-  } catch { /* allow tick to proceed if config fetch fails */ }
+  } catch (cfgErr) {
+    // FAIL-SAFE: if config is unreadable, do not execute — unknown safety state
+    log(`Config fetch failed — pausing tick for safety: ${cfgErr instanceof Error ? cfgErr.message : String(cfgErr)}`, 'error')
+    onUpdate(globalState)
+    return
+  }
 
   // 1. Failsafe cleanup
   await fixStuckCreatives()
@@ -811,6 +802,17 @@ async function tick(onUpdate: (state: AutoRunnerState) => void): Promise<void> {
 
 async function postReadyCreatives(onUpdate: (state: AutoRunnerState) => void): Promise<void> {
   if (isProcessing) return  // don't conflict with active Kling job
+
+  // ── Kill switch + test mode: also guards the rapid-post interval ──────────
+  // pickFamilyWithExploration returns null when kill switch is active, but the
+  // fallback global query would still post — so we hard-check here instead.
+  try {
+    const cfg = await getRunnerConfig()
+    if (cfg.system_mode === 'test') return
+    if (cfg.kill_switch_active)    return
+  } catch {
+    return // fail safe: unknown config → don't post
+  }
 
   try {
     // ── EXPLORATION-AWARE READY POSTING ──────────────────────────────────
@@ -869,22 +871,7 @@ async function postReadyCreatives(onUpdate: (state: AutoRunnerState) => void): P
           await supabase.from('ugc_creatives')
             .update({ status: 'posted', posted_at: new Date().toISOString() })
             .eq('id', item.id)
-
-          // Income tracking
-          try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) {
-              await supabase.from('income_entries').insert({
-                user_id: user.id,
-                source: 'UGC Content',
-                amount: 0,
-                description: `Auto-posted: ${item.title} → ${item.monetization_url || 'no link'}`,
-                entry_date: new Date().toISOString().slice(0, 10),
-                is_placeholder: true,
-                creative_id: item.id,
-              })
-            }
-          } catch { /* non-fatal */ }
+          // income_entries written by api/stripe-webhook.js on real Stripe conversion only
 
         } else {
           log(`Twitter unavailable for ${item.id.slice(0, 8)}: ${result.error}`, 'warn')

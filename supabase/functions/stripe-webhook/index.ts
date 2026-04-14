@@ -127,12 +127,19 @@ serve(async (req) => {
       }
 
       // ── Payment intent succeeded ────────────────────────────────────────────
+      // SKIP if this PI came from a Checkout session — the Vercel webhook handler
+      // covers checkout.session.completed for those, preventing double-counting.
       case 'payment_intent.succeeded': {
+        const meta = obj.metadata as Record<string, string> | undefined
+        if (meta?.checkout_session_id) {
+          console.log(`PI ${String(obj.id)} belongs to checkout session — skipping (handled by Vercel webhook)`)
+          break
+        }
         const amount   = Number(obj.amount)
         const currency = String(obj.currency ?? 'usd').toLowerCase()
         if (currency !== 'usd') break
         amountUsd   = amount / 100
-        jobId       = resolveJobId(obj.metadata as Record<string, string>, defaultJobId)
+        jobId       = resolveJobId(meta, defaultJobId)
         sourceRef   = String(obj.id ?? event.id)
         description = String(obj.description ?? 'Stripe payment')
         break
@@ -166,15 +173,17 @@ serve(async (req) => {
     }
 
     // Insert income entry if we extracted a dollar amount
+    // Column names: live DB uses income_schema_v2 (amount, reference_id, entry_date)
+    // NOT the v1 names (amount_usd, source_ref, earned_at).
     if (amountUsd && amountUsd > 0 && defaultUserId) {
       const { error: insertError } = await admin.from('income_entries').insert({
-        user_id:     defaultUserId,
-        job_id:      jobId,
-        amount_usd:  amountUsd,
-        source:      'stripe',
-        source_ref:  sourceRef,
-        description: description,
-        earned_at:   new Date().toISOString(),
+        user_id:      defaultUserId,
+        job_id:       jobId,
+        amount:       amountUsd,        // v2: 'amount' (was 'amount_usd' in v1)
+        source:       'stripe',
+        reference_id: sourceRef,        // v2: 'reference_id' (was 'source_ref' in v1)
+        description:  description,
+        entry_date:   new Date().toISOString().slice(0, 10), // v2: DATE string (was 'earned_at' TIMESTAMPTZ)
       })
 
       if (insertError) console.error('income_entries insert error:', insertError.message)

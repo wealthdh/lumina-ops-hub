@@ -229,21 +229,45 @@ async function handleConversion({ stripeEventId, session, intentId, amountUsd, c
     }
   }
 
-  // ── 3. Resolve job_id for income_entries (Digital Assets job) ────────────
+  // ── 3. Resolve job_id + user_id for income_entries ──────────────────────
+  // user_id is NOT NULL in income_entries — resolve from creative owner or job owner.
+  let resolvedUserId = null
+
+  if (creativeId) {
+    const { data: creative } = await supabase
+      .from('ugc_creatives')
+      .select('user_id')
+      .eq('id', creativeId)
+      .single()
+    resolvedUserId = creative?.user_id ?? null
+  }
+
   const { data: job } = await supabase
     .from('ops_jobs')
-    .select('id')
+    .select('id, user_id')
     .or('name.ilike.%Digital%,name.ilike.%UGC%,name.ilike.%Content%')
     .order('created_at', { ascending: true })
     .limit(1)
     .single()
 
+  if (!resolvedUserId) resolvedUserId = job?.user_id ?? null
+
+  // If we still can't resolve user_id, fall back to LUMINA_DEFAULT_USER_ID env var
+  if (!resolvedUserId) {
+    resolvedUserId = process.env.LUMINA_DEFAULT_USER_ID ?? null
+  }
+
+  if (!resolvedUserId) {
+    log('error', 'Could not resolve user_id for income_entry — skipping insert', { stripeEventId })
+  }
+
   // ── 4. Insert income_entry with creative_id linked ───────────────────────
-  const { data: incomeEntry, error: incomeError } = await supabase
+  // income_entries uses v2 schema: amount (not amount_usd), reference_id, entry_date
+  const { data: incomeEntry, error: incomeError } = resolvedUserId ? await supabase
     .from('income_entries')
     .insert({
-      job_id:       job?.id ?? null,
-      creative_id:  creativeId,
+      user_id:      resolvedUserId,
+      job_id:       job?.id ?? 'unknown',
       source:       'stripe',
       amount:       amountUsd,
       description:  `${productName ?? 'Product'} — ${buyerEmail}`,
@@ -251,7 +275,7 @@ async function handleConversion({ stripeEventId, session, intentId, amountUsd, c
       entry_date:   new Date().toISOString().slice(0, 10),
     })
     .select('id')
-    .single()
+    .single() : { data: null, error: null }
 
   if (incomeError) {
     // 23505 = duplicate reference_id = already processed via another path
